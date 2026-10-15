@@ -1,0 +1,416 @@
+{% extends "base.html" %}
+{% block title %}Espace Participant — {{ current_user.laboratory.name if current_user.laboratory else 'Portail' }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+  <!-- ══ HEADER LABORATOIRE ══════════════════════════════════════════════ -->
+  <div class="d-flex align-items-start justify-content-between mb-4 flex-wrap gap-3">
+    <div class="d-flex align-items-center gap-3">
+      <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#1d4ed8,#06b6d4);
+                  display:flex;align-items:center;justify-content:center;box-shadow:0 4px 15px rgba(29,78,216,.25);">
+        <i class="bi bi-building text-white fs-4"></i>
+      </div>
+      <div>
+        <h1 class="h4 fw-bold mb-0">
+          {% if current_user.laboratory %}{{ current_user.laboratory.name }}
+          {% else %}Espace Participant{% endif %}
+        </h1>
+        <div class="d-flex align-items-center gap-2 mt-1">
+          {% if current_user.laboratory %}
+          <span class="badge bg-dark rounded-pill px-2" style="font-size:11px;font-family:monospace;">
+            {{ current_user.laboratory.code }}
+          </span>
+          {% endif %}
+          <span class="badge rounded-pill px-2"
+                style="background:rgba(99,102,241,.12);color:#6366f1;font-size:11px;">
+            <i class="bi bi-person-badge me-1"></i>Participant
+          </span>
+        </div>
+      </div>
+    <div class="d-flex align-items-center gap-2">
+      {% if campaigns and campaigns|length > 1 %}
+      <div class="dropdown">
+        <button class="btn btn-outline-primary btn-sm dropdown-toggle fw-semibold" type="button" data-bs-toggle="dropdown">
+          <i class="bi bi-diagram-3 me-1"></i>
+          {{ selected_campaign.reference if selected_campaign else 'Toutes les campagnes' }}
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+          {% for c in campaigns %}
+          <li>
+            <a class="dropdown-item d-flex align-items-center justify-content-between {% if selected_campaign and selected_campaign.id == c.id %}active fw-bold{% endif %}"
+               href="{{ url_for('participants.portal', campaign_id=c.id) }}">
+              <span>{{ c.reference }} — {{ c.name }}</span>
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% if selected_campaign and selected_campaign.report_published %}
+      <a href="{{ url_for('reports.export_campaign', campaign_id=selected_campaign.id, fmt='pdf') }}" class="btn btn-success btn-sm d-flex align-items-center gap-2 fw-semibold shadow-sm">
+        <i class="bi bi-file-earmark-pdf"></i>Rapport Final
+      </a>
+      {% endif %}
+      <a href="{{ url_for('participants.my_contact_info') }}"
+         class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-2">
+        <i class="bi bi-pencil-square"></i>Mes coordonnées
+      </a>
+    </div>
+  </div>
+
+  <!-- ══ KPIs RAPIDES ════════════════════════════════════════════════════ -->
+  {% set total = forms | length %}
+  {% set soumis = forms | selectattr('submission') | list | length %}
+  {% set valides = forms | selectattr('status','eq','validated') | list | length %}
+  {% set en_retard = forms | selectattr('late','defined') | list %}
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm text-center h-100"
+           style="border-radius:14px;background:linear-gradient(135deg,#f0f9ff,#e0f2fe);">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-primary">{{ total }}</div>
+          <div class="small text-muted fw-semibold">Essais attribués</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm text-center h-100"
+           style="border-radius:14px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-success">{{ soumis }}</div>
+          <div class="small text-muted fw-semibold">Résultats soumis</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm text-center h-100"
+           style="border-radius:14px;background:linear-gradient(135deg,#fefce8,#fef9c3);">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-warning">{{ valides }}</div>
+          <div class="small text-muted fw-semibold">Validés</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card border-0 shadow-sm text-center h-100"
+           style="border-radius:14px;background:linear-gradient(135deg,#fff1f2,#ffe4e6);">
+        <div class="card-body py-3">
+          {% set n_late = namespace(c=0) %}
+          {% for f in forms %}{% if f.status == 'pending' and f.trial.due_date and f.trial.due_date < today %}{% set n_late.c = n_late.c + 1 %}{% endif %}{% endfor %}
+          <div class="display-6 fw-bold text-danger">{{ n_late.c }}</div>
+          <div class="small text-muted fw-semibold">En retard</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ CARTES ESSAIS ════════════════════════════════════════════════════ -->
+  {% if forms %}
+  <div class="row g-4">
+    {% for f in forms %}
+    {% set is_late = f.status == 'pending' and f.trial.due_date and f.trial.due_date < today %}
+    {% set days_left = (f.trial.due_date - today).days if f.trial.due_date else none %}
+
+    <div class="col-12 col-xl-6">
+      <div class="card border-0 shadow-sm h-100 position-relative overflow-hidden"
+           style="border-radius:16px;{% if is_late %}border-left:4px solid #ef4444!important;{% elif f.status == 'validated' %}border-left:4px solid #10b981!important;{% elif f.status == 'submitted' %}border-left:4px solid #3b82f6!important;{% else %}border-left:4px solid #f59e0b!important;{% endif %}">
+
+        <!-- Bandeau type d'essai -->
+        <div class="position-absolute top-0 end-0 m-2">
+          <span class="badge rounded-pill px-3 py-2
+            {% if f.trial.trial_type == 'quantitative' %}bg-primary
+            {% elif f.trial.trial_type == 'qualitative' %}bg-success
+            {% else %}bg-warning text-dark{% endif %}"
+            style="font-size:11px;">
+            <i class="bi bi-{% if f.trial.trial_type == 'quantitative' %}calculator{% elif f.trial.trial_type == 'qualitative' %}check2-circle{% else %}palette{% endif %} me-1"></i>
+            {{ f.trial.type_label() }}
+          </span>
+        </div>
+
+        <div class="card-body p-4">
+          <!-- En-tête essai -->
+          <div class="mb-3">
+            <div class="d-flex align-items-start gap-2 mb-1">
+              <div>
+                <h5 class="fw-bold mb-0">{{ f.trial.name }}</h5>
+                <div class="text-muted small">
+                  <i class="bi bi-diagram-3 me-1"></i>{{ f.trial.campaign.reference }} — {{ f.trial.campaign.name[:35] }}
+                </div>
+              </div>
+            </div>
+
+            {% if f.trial.parameter %}
+            <div class="d-flex flex-wrap gap-2 mt-2">
+              <span class="badge bg-light text-dark border small">
+                <i class="bi bi-tag me-1"></i>{{ f.trial.parameter }}
+                {% if f.trial.unit %} ({{ f.trial.unit }}){% endif %}
+              </span>
+              {% if f.trial.method %}
+              <span class="badge bg-light text-dark border small">
+                <i class="bi bi-journal-code me-1"></i>{{ f.trial.method[:25] }}
+              </span>
+              {% endif %}
+              {% if f.submission and f.submission.iso17025_accredited %}
+              <span class="badge px-2" style="background:#dbeafe;color:#1e40af;font-size:10.5px;">
+                <i class="bi bi-patch-check-fill me-1"></i>ISO 17025
+              </span>
+              {% endif %}
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- ── TIMELINE DE STATUT ──────────────────────────────────── -->
+          <div class="mb-4">
+            {% set step_ship = f.tracking_number is not none and f.tracking_number %}
+            {% set step_recv = f.received %}
+            {% set step_sub  = f.submission is not none %}
+            {% set step_conf = f.submission and f.submission.confirmed %}
+            {% set step_val  = f.status == 'validated' %}
+
+            <div class="d-flex align-items-center justify-content-between position-relative" style="padding:0 8px;">
+              <!-- Ligne de fond -->
+              <div class="position-absolute" style="top:50%;left:8px;right:8px;height:3px;background:#e5e7eb;z-index:0;transform:translateY(-50%);border-radius:2px;"></div>
+              <!-- Ligne de progression -->
+              {% set pct = namespace(v=0) %}
+              {% if step_ship %}{% set pct.v = 25 %}{% endif %}
+              {% if step_recv %}{% set pct.v = 50 %}{% endif %}
+              {% if step_sub  %}{% set pct.v = 75 %}{% endif %}
+              {% if step_val  %}{% set pct.v = 100 %}{% endif %}
+              <div class="position-absolute" style="top:50%;left:8px;width:{{ pct.v }}%;height:3px;background:linear-gradient(90deg,#3b82f6,#10b981);z-index:1;transform:translateY(-50%);border-radius:2px;transition:width .5s;"></div>
+
+              {% macro step_dot(done, icon, label) %}
+              <div class="d-flex flex-column align-items-center gap-1" style="z-index:2;">
+                <div style="width:28px;height:28px;border-radius:50%;
+                  background:{% if done %}linear-gradient(135deg,#10b981,#059669){% else %}#e5e7eb{% endif %};
+                  display:flex;align-items:center;justify-content:center;
+                  box-shadow:{% if done %}0 2px 8px rgba(16,185,129,.35){% else %}none{% endif %};
+                  transition:all .3s;">
+                  <i class="bi bi-{{ icon }}" style="font-size:12px;color:{% if done %}white{% else %}#9ca3af{% endif %};"></i>
+                </div>
+                <span class="text-center" style="font-size:9.5px;color:{% if done %}#059669{% else %}#9ca3af{% endif %};font-weight:{% if done %}600{% else %}400{% endif %};line-height:1.2;max-width:54px;">{{ label }}</span>
+              </div>
+              {% endmacro %}
+
+              {{ step_dot(step_ship, 'truck', 'Expédié') }}
+              {{ step_dot(step_recv, 'box-seam-fill', 'Reçu') }}
+              {{ step_dot(step_sub,  'pencil-fill', 'Soumis') }}
+              {{ step_dot(step_conf, 'shield-check', 'Confirmé') }}
+              {{ step_dot(step_val,  'patch-check-fill', 'Validé') }}
+            </div>
+          </div>
+
+          <!-- ── INFOS COLIS & SUIVI LOGISTIQUE ───────────────────── -->
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <div class="p-2 rounded-3" style="background:#f8fafc;border:1px solid #e2e8f0;">
+                <div class="small text-muted mb-1"><i class="bi bi-box me-1"></i>Code Échantillon</div>
+                <code class="small fw-bold text-dark fs-6" style="font-family:monospace;">{{ f.sample_code or ('ECH-' ~ f.id) }}</code>
+                {% if f.sample_quantity %}
+                <div class="text-muted small mt-1" style="font-size:11px;"><i class="bi bi-boxes me-1"></i>{{ f.sample_quantity }} échantillon(s)</div>
+                {% endif %}
+              </div>
+            </div>
+            <div class="col-6">
+              {% if f.received %}
+              <div class="p-2 rounded-3" style="background:#f0fdf4;border:1px solid #bbf7d0;">
+                <div class="small text-muted mb-1"><i class="bi bi-check-circle-fill text-success me-1"></i>Statut Réception</div>
+                <div class="small fw-semibold text-success">{{ f.reception_date.strftime('%d/%m/%Y %H:%M') if f.reception_date else 'Confirmée' }}</div>
+              </div>
+              {% elif f.dispatch_confirmed or f.tracking_number %}
+              <div class="p-2 rounded-3" style="background:#eff6ff;border:1px solid #bfdbfe;">
+                <div class="small text-muted mb-1"><i class="bi bi-truck text-primary me-1"></i>Statut Colis</div>
+                <div class="small text-primary fw-bold"><i class="bi bi-send-check me-1"></i>Expédié</div>
+                {% if f.dispatch_date %}<div class="text-muted small mt-0.5" style="font-size:11px;"><i class="bi bi-calendar-event me-1"></i>{{ f.dispatch_date.strftime('%d/%m/%Y') }}</div>{% endif %}
+              </div>
+              {% else %}
+              <div class="p-2 rounded-3" style="background:#fff7ed;border:1px solid #fed7aa;">
+                <div class="small text-muted mb-1"><i class="bi bi-clock text-warning me-1"></i>Statut Colis</div>
+                <div class="small text-warning fw-semibold">En préparation</div>
+              </div>
+              {% endif %}
+            </div>
+
+            {% if f.dispatch_confirmed or f.tracking_number %}
+            <div class="col-12">
+              <div class="p-3 rounded-3" style="background:#f0f9ff;border:1px solid #bae6fd;">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
+                  <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-truck text-info fs-5"></i>
+                    <div>
+                      <div class="small text-muted" style="font-size:11px;">{{ f.carrier or 'Transporteur' }}</div>
+                      <code class="fw-bold text-info fs-6">{{ f.tracking_number or 'N° en attente' }}</code>
+                    </div>
+                  </div>
+                  <div class="d-flex gap-2">
+                    {% if f.tracking_number %}
+                    {% set c = (f.carrier or '')|lower %}
+                    {% if 'dhl' in c %}
+                    <a href="https://www.dhl.com/global-en/home/tracking.html?tracking-id={{ f.tracking_number }}" target="_blank" class="btn btn-sm btn-info text-white py-1 px-2" style="font-size:11.5px;"><i class="bi bi-box-arrow-up-right me-1"></i>Suivre DHL</a>
+                    {% elif 'poste' in c or 'rapid' in c %}
+                    <a href="https://www.rapidposte.poste.tn/fr/Item_Events.asp?Item_ID={{ f.tracking_number }}" target="_blank" class="btn btn-sm btn-info text-white py-1 px-2" style="font-size:11.5px;"><i class="bi bi-box-arrow-up-right me-1"></i>Suivre RapidPoste</a>
+                    {% endif %}
+                    {% endif %}
+
+                    <a href="{{ url_for('participants.qr_label', form_id=f.id) }}" target="_blank" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size:11.5px;" title="Afficher et imprimer le QR Code et l'étiquette">
+                      <i class="bi bi-qr-code-scan me-1"></i>Afficher QR Code
+                    </a>
+                  </div>
+                </div>
+
+                {% if f.sample_photo %}
+                <div class="mt-2 pt-2 border-top">
+                  <span class="small text-muted d-block mb-1"><i class="bi bi-camera me-1"></i>Photo de l'échantillon expédié :</span>
+                  <img src="{{ url_for('participants.serve_parcel_photo', form_id=f.id) }}" alt="Échantillon" class="rounded-2 border" style="max-height:110px; object-fit:contain;">
+                </div>
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- ── RÉSULTAT SOUMIS (aperçu) ───────────────────────────── -->
+          {% if f.submission %}
+          <div class="p-3 rounded-3 mb-3" style="background:linear-gradient(135deg,#f8fafc,#f1f5f9);border:1px solid #e2e8f0;">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <span class="small fw-semibold text-dark">
+                <i class="bi bi-graph-up me-1 text-primary"></i>Résultat soumis
+              </span>
+              {% if f.submission.submitted_at %}
+              <span class="small text-muted">{{ f.submission.submitted_at.strftime('%d/%m/%Y %H:%M') }}</span>
+              {% endif %}
+            </div>
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+              <div>
+                <span class="fw-bold fs-5">
+                  {{ f.submission.value if f.submission.value is not none else (f.submission.qualitative_result or '—') }}
+                  {% if f.submission.value is not none and f.trial.unit %}<small class="text-muted fs-6"> {{ f.trial.unit }}</small>{% endif %}
+                </span>
+                {% if f.submission.replicate_2 is not none %}
+                <div class="small text-muted">Réplicat 2 : {{ f.submission.replicate_2 }}</div>
+                {% endif %}
+              </div>
+
+              {% if f.trial.campaign.report_published %}
+              <div class="ms-auto" style="border-left:2px solid #e2e8f0; padding-left:12px;">
+                <div class="small fw-semibold text-muted mb-1">Évaluation finale</div>
+                {% if f.trial.trial_type == 'quantitative' and f.submission.z_score is not none %}
+                  {% set z = f.submission.z_score %}
+                  <span class="badge px-2 py-1 fs-6 {% if z | abs <= 2 %}bg-success{% elif z | abs <= 3 %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                    Z = {{ z }}
+                  </span>
+                {% elif f.trial.trial_type == 'qualitative' and f.submission.qualitative_conform is not none %}
+                  <span class="badge fs-6 {% if f.submission.qualitative_conform %}bg-success{% else %}bg-danger{% endif %}">
+                    {{ 'Conforme' if f.submission.qualitative_conform else 'Non conforme' }}
+                  </span>
+                {% else %}
+                  <span class="text-muted small">Éval. non dispo</span>
+                {% endif %}
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- ── ÉCHÉANCE ────────────────────────────────────────────── -->
+          {% if f.trial.due_date %}
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi bi-calendar-event {% if is_late %}text-danger{% elif days_left != none and days_left <= 7 %}text-warning{% else %}text-muted{% endif %}"></i>
+              <span class="small {% if is_late %}text-danger fw-bold{% elif days_left != none and days_left <= 7 %}text-warning fw-semibold{% else %}text-muted{% endif %}">
+                {% if is_late %}
+                  ⚠ En retard — Clôture : {{ f.trial.due_date.strftime('%d/%m/%Y') }}
+                {% elif days_left == 0 %}
+                  🔴 Clôture AUJOURD'HUI
+                {% elif days_left is not none and days_left <= 7 %}
+                  ⏳ Clôture dans {{ days_left }} jour(s) — {{ f.trial.due_date.strftime('%d/%m/%Y') }}
+                {% else %}
+                  Clôture : {{ f.trial.due_date.strftime('%d/%m/%Y') }}
+                {% endif %}
+              </span>
+            </div>
+            {% if days_left is not none and days_left >= 0 %}
+            <!-- Mini countdown badge -->
+            <span id="countdown-{{ f.id }}" class="badge bg-light text-dark border"
+                  data-days="{{ days_left }}" style="font-size:11px;font-variant-numeric:tabular-nums;">
+              <i class="bi bi-hourglass-split me-1"></i>{{ days_left }}j
+            </span>
+            {% endif %}
+          </div>
+          {% endif %}
+
+          <!-- ── ACTIONS ─────────────────────────────────────────────── -->
+          <div class="d-flex gap-2 flex-wrap">
+            {% if not f.received and not f.submission %}
+            <!-- Pas encore reçu -->
+            <form method="POST" action="{{ url_for('participants.confirm_reception', form_id=f.id) }}" class="d-inline">
+              <button type="submit" class="btn btn-sm btn-warning fw-semibold">
+                <i class="bi bi-box-seam me-1"></i>Confirmer réception colis
+              </button>
+            </form>
+            {% endif %}
+
+            <a href="{{ url_for('participants.submit_form', form_id=f.id) }}"
+               class="btn btn-sm {% if f.submission %}btn-outline-primary{% else %}btn-primary{% endif %} fw-semibold">
+              <i class="bi bi-{% if f.submission %}pencil{% else %}plus-circle{% endif %} me-1"></i>
+              {% if f.submission %}Modifier{% else %}Saisir résultat{% endif %}
+            </a>
+
+            {% if f.submission and not f.submission.confirmed %}
+            <a href="{{ url_for('participants.confirm_submission', form_id=f.id) }}"
+               class="btn btn-sm btn-success fw-semibold">
+              <i class="bi bi-shield-check me-1"></i>Confirmer
+            </a>
+            {% endif %}
+
+            <a href="{{ url_for('participants.qr_label', form_id=f.id) }}" target="_blank"
+               class="btn btn-sm btn-outline-secondary" title="QR Code / Étiquette">
+              <i class="bi bi-qr-code-scan"></i>
+            </a>
+
+            {% if f.submission %}
+            <a href="{{ url_for('participants.submission_summary_pdf', form_id=f.id) }}"
+               class="btn btn-sm btn-outline-danger" title="PDF">
+              <i class="bi bi-file-earmark-pdf"></i>
+            </a>
+            {% endif %}
+          </div>
+
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <!-- État vide -->
+  <div class="d-flex flex-column align-items-center justify-content-center py-5 text-center">
+    <div style="width:80px;height:80px;border-radius:50%;background:#f1f5f9;
+                display:flex;align-items:center;justify-content:center;margin-bottom:1.5rem;">
+      <i class="bi bi-inbox fs-2 text-muted"></i>
+    </div>
+    <h5 class="text-muted fw-semibold mb-2">Aucun essai attribué</h5>
+    <p class="text-muted small mb-0">Les essais vous seront attribués par le chef technique lors de la prochaine campagne active.</p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Mise à jour des compteurs à rebours
+document.querySelectorAll('[id^="countdown-"]').forEach(el => {
+  const days = parseInt(el.getAttribute('data-days'), 10);
+  if (days === 0) {
+    el.className = 'badge bg-danger text-white border';
+    el.innerHTML = '<i class="bi bi-alarm me-1"></i>Aujourd\'hui!';
+  } else if (days <= 3) {
+    el.className = 'badge bg-danger text-white border';
+  } else if (days <= 7) {
+    el.className = 'badge bg-warning text-dark border';
+  }
+});
+</script>
+{% endblock %}

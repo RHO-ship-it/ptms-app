@@ -62,6 +62,15 @@ class User(UserMixin, db.Model):
         return f"<User {self.username} ({self.role})>"
 
 
+COMMERCIAL_STATUSES = ["prospect", "confirme", "retenu", "fidele"]
+COMMERCIAL_STATUS_LABELS = {
+    "prospect": "Client prospecté",
+    "confirme": "Client confirmé",
+    "retenu": "Client retenu",
+    "fidele": "Client fidèle",
+}
+
+
 class Laboratory(db.Model):
     __tablename__ = "laboratories"
 
@@ -72,14 +81,41 @@ class Laboratory(db.Model):
     email = db.Column(db.String(150))
     phone = db.Column(db.String(50))
     address = db.Column(db.String(300))
+    commercial_status = db.Column(db.String(30), default="prospect", nullable=False)  # prospect, confirme, retenu, fidele
+    iso17025_accredited = db.Column(db.Boolean, default=False, nullable=False)
     active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     users = db.relationship("User", back_populates="laboratory")
     campaign_links = db.relationship("CampaignLaboratory", back_populates="laboratory", cascade="all, delete-orphan")
+    tracking_entries = db.relationship("CommercialTracking", back_populates="laboratory", cascade="all, delete-orphan", order_by="CommercialTracking.created_at.desc()")
+
+    def get_commercial_status_label(self):
+        return COMMERCIAL_STATUS_LABELS.get(self.commercial_status, self.commercial_status)
 
     def __repr__(self):
         return f"<Laboratory {self.code}>"
+
+
+class CommercialTracking(db.Model):
+    __tablename__ = "commercial_tracking"
+
+    id = db.Column(db.Integer, primary_key=True)
+    laboratory_id = db.Column(db.Integer, db.ForeignKey("laboratories.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    interaction_type = db.Column(db.String(30), nullable=False, default="note")
+    # Types: prospect, call, email, meeting, quotation, status_change, note
+    subject = db.Column(db.String(200), nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+    next_followup_date = db.Column(db.Date, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    laboratory = db.relationship("Laboratory", back_populates="tracking_entries")
+    user = db.relationship("User")
+
+    def __repr__(self):
+        return f"<CommercialTracking {self.id} - Lab:{self.laboratory_id}>"
+
 
 
 class Campaign(db.Model):
@@ -92,6 +128,7 @@ class Campaign(db.Model):
     status = db.Column(db.String(30), default="draft")  # draft, active, closed, archived
     start_date = db.Column(db.Date)
     end_date = db.Column(db.Date)
+    report_published = db.Column(db.Boolean, default=False)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -198,9 +235,28 @@ class ParticipantForm(db.Model):
     status = db.Column(db.String(30), default="pending")  # pending, submitted, validated, anomaly
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # --- Logistics, Parcel Tracking & QR Code Receipt (ISO 17043 §7.3) ---
+    sample_code = db.Column(db.String(100), nullable=True)
+    tracking_number = db.Column(db.String(100), nullable=True)
+    carrier = db.Column(db.String(50), nullable=True)
+    dispatch_date = db.Column(db.Date, nullable=True)
+    dispatch_confirmed = db.Column(db.Boolean, default=False, nullable=False)  # Confirmation manuelle d'envoi
+    sample_quantity = db.Column(db.Integer, nullable=True)      # Nombre d'échantillons envoyés
+    sample_photo = db.Column(db.String(255), nullable=True)     # Chemin photo des échantillons
+    received = db.Column(db.Boolean, default=False, nullable=False)
+    reception_date = db.Column(db.DateTime, nullable=True)
+    qr_token = db.Column(db.String(64), unique=True, nullable=True)
+
     trial = db.relationship("Trial", back_populates="forms")
     laboratory = db.relationship("Laboratory")
     submission = db.relationship("Submission", back_populates="form", uselist=False, cascade="all, delete-orphan")
+
+    def ensure_qr_token(self):
+        import secrets
+        if not self.qr_token:
+            self.qr_token = secrets.token_hex(20)
+        return self.qr_token
+
 
 
 class Submission(db.Model):

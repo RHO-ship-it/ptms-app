@@ -30,14 +30,31 @@ def portal():
         flash("Votre compte n'est rattaché à aucun laboratoire.", "warning")
         return redirect(url_for("dashboard.index"))
 
-    forms = (ParticipantForm.query
-             .filter_by(laboratory_id=current_user.laboratory_id)
-             .join(Trial)
-             .join(Campaign)
-             .filter(Campaign.status == "active")
-             .all())
+    campaign_id = request.args.get("campaign_id", type=int)
+    campaigns = (Campaign.query
+                 .join(Trial)
+                 .join(ParticipantForm)
+                 .filter(ParticipantForm.laboratory_id == current_user.laboratory_id)
+                 .distinct()
+                 .all())
+
+    selected_campaign = None
+    if campaign_id:
+        selected_campaign = Campaign.query.get(campaign_id)
+    elif campaigns:
+        selected_campaign = next((c for c in campaigns if c.reference == 'TTS-A2601'), campaigns[0])
+
+    forms_query = ParticipantForm.query.filter_by(laboratory_id=current_user.laboratory_id).join(Trial)
+    if selected_campaign:
+        forms_query = forms_query.filter(Trial.campaign_id == selected_campaign.id)
+
+    forms = forms_query.all()
     today = date.today()
-    return render_template("participants/portal.html", forms=forms, today=today)
+    return render_template("participants/portal.html",
+                           forms=forms,
+                           campaigns=campaigns,
+                           selected_campaign=selected_campaign,
+                           today=today)
 
 
 @participants_bp.route("/form/<int:form_id>/submit", methods=["GET", "POST"])
@@ -367,6 +384,7 @@ def tracker(campaign_id=None):
         for f in forms:
             is_late = f.status == "pending" and f.trial.due_date and f.trial.due_date < today
             rows.append({
+                "form": f,
                 "lab": f.laboratory.code,
                 "trial": f.trial.name,
                 "status": f.status,
@@ -385,16 +403,37 @@ def tracker(campaign_id=None):
 @login_required
 @roles_required("admin", "chef_technique", "auditeur")
 def validation_center():
-    status_filter = request.args.get("status", "")
+    status_filter  = request.args.get("status", "")
+    campaign_id    = request.args.get("campaign_id", type=int)
+    trial_id       = request.args.get("trial_id", type=int)
+
+    # Liste de toutes les campagnes pour le dropdown
+    all_campaigns = Campaign.query.order_by(Campaign.created_at.desc()).all()
+
+    # Si aucune campagne sélectionnée, prendre la première active
+    selected_campaign = None
+    if campaign_id:
+        selected_campaign = Campaign.query.get(campaign_id)
+    elif all_campaigns:
+        selected_campaign = next((c for c in all_campaigns if c.status == "active"), all_campaigns[0])
+
     query = (ParticipantForm.query
              .join(Submission)
+             .join(Trial)
              .filter(ParticipantForm.status.in_(["submitted", "anomaly", "validated"])))
+
+    if selected_campaign:
+        query = query.filter(Trial.campaign_id == selected_campaign.id)
+
+    if trial_id:
+        query = query.filter(Trial.id == trial_id)
+
     if status_filter:
         query = query.filter(ParticipantForm.status == status_filter)
 
     forms = query.all()
 
-    # Moyenne des résultats quantitatifs déjà soumis, par essai (vue de synthèse pour l'admin)
+    # Moyenne des résultats quantitatifs déjà soumis, par essai
     trial_averages = {}
     for f in forms:
         if f.trial.trial_type == "quantitative" and f.trial_id not in trial_averages:
@@ -409,7 +448,12 @@ def validation_center():
             "average": trial_averages.get(f.trial_id),
         })
 
-    return render_template("participants/validation.html", items=items, status_filter=status_filter)
+    return render_template("participants/validation.html",
+                           items=items,
+                           status_filter=status_filter,
+                           trial_id=trial_id,
+                           all_campaigns=all_campaigns,
+                           selected_campaign=selected_campaign)
 
 
 @participants_bp.route("/validation/<int:form_id>/validate", methods=["POST"])
@@ -417,9 +461,10 @@ def validation_center():
 @roles_required("admin", "chef_technique")
 def validate_submission(form_id):
     form = ParticipantForm.query.get_or_404(form_id)
+    campaign_id = request.form.get("campaign_id", type=int)
     if not form.submission:
         flash("Aucune soumission à valider pour ce formulaire.", "warning")
-        return redirect(url_for("participants.validation_center"))
+        return redirect(url_for("participants.validation_center", campaign_id=campaign_id))
 
     form.submission.validated = True
     form.submission.validated_by = current_user.id
@@ -430,7 +475,7 @@ def validate_submission(form_id):
     log_action("validate", "Submission", form.submission.id,
                f"Validation de la soumission pour {form.trial.name} / {form.laboratory.code}")
     flash("Soumission validée.", "success")
-    return redirect(url_for("participants.validation_center"))
+    return redirect(url_for("participants.validation_center", campaign_id=campaign_id))
 
 
 @participants_bp.route("/validation/<int:form_id>/reject", methods=["POST"])
@@ -438,6 +483,7 @@ def validate_submission(form_id):
 @roles_required("admin", "chef_technique")
 def reject_submission(form_id):
     form = ParticipantForm.query.get_or_404(form_id)
+    campaign_id = request.args.get("campaign_id", type=int)
     reason = request.form.get("reason", "").strip()
     form.status = "anomaly"
     if form.submission:
@@ -448,4 +494,251 @@ def reject_submission(form_id):
                f"Rejet de la soumission pour {form.trial.name} / {form.laboratory.code} : {reason}")
     notify_role("participant", f"Votre soumission pour {form.trial.name} nécessite une correction.")
     flash("Soumission rejetée, le laboratoire a été notifié.", "info")
+    return redirect(url_for("participants.validation_center", campaign_id=campaign_id))
+
+
+@participants_bp.route("/validation/mass-validate", methods=["POST"])
+@login_required
+@roles_required("admin", "chef_technique")
+def mass_validate():
+    form_ids_str = request.form.get("form_ids", "")
+    if not form_ids_str:
+        flash("Aucune soumission sélectionnée.", "warning")
+        return redirect(url_for("participants.validation_center"))
+        
+    ids = [int(x) for x in form_ids_str.split(",") if x.strip().isdigit()]
+    if not ids:
+        flash("Aucune soumission valide sélectionnée.", "warning")
+        return redirect(url_for("participants.validation_center"))
+        
+    forms = ParticipantForm.query.filter(ParticipantForm.id.in_(ids)).all()
+    count = 0
+    for form in forms:
+        if form.submission and form.status != "validated":
+            form.submission.validated = True
+            form.submission.validated_by = current_user.id
+            form.submission.validated_at = datetime.utcnow()
+            form.status = "validated"
+            count += 1
+            log_action("validate", "Submission", form.submission.id,
+                       f"Validation en masse pour {form.trial.name} / {form.laboratory.code}")
+                       
+    db.session.commit()
+    flash(f"{count} soumissions validées avec succès.", "success")
     return redirect(url_for("participants.validation_center"))
+
+
+@participants_bp.route("/validation/export")
+@login_required
+@roles_required("admin", "chef_technique", "auditeur")
+def export_validation():
+    import csv
+    from flask import Response
+    
+    status_filter = request.args.get("status", "")
+    query = (ParticipantForm.query
+             .join(Submission)
+             .filter(ParticipantForm.status.in_(["submitted", "anomaly", "validated"])))
+    if status_filter:
+        query = query.filter(ParticipantForm.status == status_filter)
+        
+    forms = query.all()
+    
+    def generate():
+        yield "Campagne;Essai;Laboratoire;Code Labo;Resultat;Replicat 2;Unite;Statut Validation;Date Soumission;Commentaires\n"
+        for f in forms:
+            s = f.submission
+            if not s:
+                continue
+            
+            val = str(s.value) if s.value is not None else (s.qualitative_result or "")
+            repl = str(s.replicate_2) if s.replicate_2 is not None else ""
+            unit = f.trial.unit or ""
+            date_soum = s.submitted_at.strftime('%d/%m/%Y %H:%M') if s.submitted_at else ""
+            
+            row = [
+                f.trial.campaign.reference,
+                f.trial.name,
+                f.laboratory.name,
+                f.laboratory.code,
+                val,
+                repl,
+                unit,
+                f.status,
+                date_soum,
+                s.comments or ""
+            ]
+            # Handle possible semicolons in data
+            row_clean = [str(x).replace(";", ",") for x in row]
+            yield ";".join(row_clean) + "\n"
+            
+    response = Response(generate(), mimetype="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=export_validation.csv"
+    return response
+
+
+
+# ---------- LOGISTIQUE COLIS & SCAN QR CODE ----------
+
+@participants_bp.route("/scan-qr/<qr_token>", methods=["GET", "POST"])
+def scan_qr(qr_token):
+    """
+    Page publique / scannable pour afficher les métadonnées de l'échantillon
+    et valider la réception du colis avec horodatage temps réel.
+    """
+    form = ParticipantForm.query.filter_by(qr_token=qr_token).first_or_404()
+
+    if request.method == "POST":
+        form.received = True
+        form.reception_date = datetime.utcnow()
+        db.session.commit()
+
+        log_action(
+            "scan_reception_qr",
+            entity_type="ParticipantForm",
+            entity_id=form.id,
+            details=f"Réception du colis d'échantillon {form.sample_code or form.id} validée via QR code par {form.laboratory.code} à {form.reception_date.strftime('%d/%m/%Y %H:%M:%S')}",
+        )
+        flash(f"✅ Réception du colis confirmée avec succès le {form.reception_date.strftime('%d/%m/%Y à %H:%M:%S')}.", "success")
+        return redirect(url_for("participants.scan_qr", qr_token=qr_token))
+
+    return render_template("participants/scan_reception.html", form=form)
+
+
+@participants_bp.route("/form/<int:form_id>/confirm-reception", methods=["POST"])
+@login_required
+def confirm_reception(form_id):
+    """Validation manuelle de réception du colis."""
+    form = ParticipantForm.query.get_or_404(form_id)
+
+    # Vérification accès (admin, chef_technique, ou le labo concerné)
+    if not current_user.is_staff() and current_user.laboratory_id != form.laboratory_id:
+        flash("Accès non autorisé.", "danger")
+        return redirect(url_for("participants.portal"))
+
+    form.received = True
+    form.reception_date = datetime.utcnow()
+    db.session.commit()
+
+    log_action("confirm_reception", entity_type="ParticipantForm", entity_id=form.id,
+               details=f"Réception du colis pour {form.trial.name} confirmée par {current_user.full_name}")
+
+    flash(f"Réception du colis enregistrée le {form.reception_date.strftime('%d/%m/%Y à %H:%M')}.", "success")
+    return redirect(request.referrer or url_for("participants.portal"))
+
+
+@participants_bp.route("/form/<int:form_id>/update-shipping", methods=["POST"])
+@login_required
+@roles_required("admin", "chef_technique")
+def update_shipping(form_id):
+    """Mise à jour des infos d'expédition : code échantillon, transporteur, tracking, photo, quantité, confirmation."""
+    form = ParticipantForm.query.get_or_404(form_id)
+
+    form.sample_code = request.form.get("sample_code", "").strip() or None
+    form.tracking_number = request.form.get("tracking_number", "").strip() or None
+    form.carrier = request.form.get("carrier", "").strip() or None
+    sample_qty_str = request.form.get("sample_quantity", "")
+    form.sample_quantity = int(sample_qty_str) if sample_qty_str.strip().isdigit() else None
+
+    dispatch_str = request.form.get("dispatch_date", "")
+    form.dispatch_date = datetime.strptime(dispatch_str, "%Y-%m-%d").date() if dispatch_str else None
+
+    # Confirmation d'envoi
+    if request.form.get("dispatch_confirmed") == "1":
+        form.dispatch_confirmed = True
+
+    # Photo des échantillons
+    photo_file = request.files.get("sample_photo")
+    if photo_file and photo_file.filename:
+        ext = photo_file.filename.rsplit(".", 1)[-1].lower() if "." in photo_file.filename else ""
+        if ext in {"jpg", "jpeg", "png", "gif", "webp"}:
+            subdir = os.path.join(current_app.config["UPLOAD_FOLDER"], "parcel_photos", str(form.id))
+            os.makedirs(subdir, exist_ok=True)
+            stored_name = f"{uuid.uuid4().hex}.{ext}"
+            photo_file.save(os.path.join(subdir, stored_name))
+            form.sample_photo = os.path.join("parcel_photos", str(form.id), stored_name)
+
+    # Générer le token QR si inexistant
+    form.ensure_qr_token()
+
+    db.session.commit()
+
+    log_action("update_shipping", entity_type="ParticipantForm", entity_id=form.id,
+               details=f"Infos colis mises à jour pour {form.laboratory.code} (Tracking: {form.tracking_number})")
+
+    flash(f"Informations d'expédition mises à jour pour le laboratoire {form.laboratory.code}.", "success")
+    return redirect(request.referrer or url_for("participants.tracker"))
+
+
+@participants_bp.route("/update-mass-shipping", methods=["POST"])
+@login_required
+@roles_required("admin", "chef_technique")
+def update_mass_shipping():
+    """Mise à jour en masse des infos d'expédition (transporteur, numéro de suivi)."""
+    form_ids = request.form.getlist("form_ids")
+    campaign_id = request.form.get("campaign_id")
+    count = 0
+    for fid_str in form_ids:
+        fid = int(fid_str)
+        form = ParticipantForm.query.get(fid)
+        if form:
+            carrier = request.form.get(f"carrier_{fid}", "").strip()
+            tracking = request.form.get(f"tracking_number_{fid}", "").strip()
+            
+            updated = False
+            if carrier != (form.carrier or ""):
+                form.carrier = carrier or None
+                updated = True
+            if tracking != (form.tracking_number or ""):
+                form.tracking_number = tracking or None
+                updated = True
+                
+            if updated:
+                count += 1
+                form.ensure_qr_token()
+
+    if count > 0:
+        db.session.commit()
+        log_action("update_mass_shipping", entity_type="Campaign", entity_id=campaign_id,
+                   details=f"Mise à jour logistique en masse pour {count} formulaires")
+        flash(f"{count} expéditions mises à jour.", "success")
+    else:
+        flash("Aucune modification détectée.", "info")
+        
+    return redirect(request.referrer or url_for("participants.tracker"))
+
+
+@participants_bp.route("/form/<int:form_id>/parcel-status")
+@login_required
+@roles_required("admin", "chef_technique", "auditeur")
+def parcel_status(form_id):
+    """Aperçu du statut complet du colis pour un formulaire donné."""
+    form = ParticipantForm.query.get_or_404(form_id)
+    return render_template("participants/parcel_status.html", form=form)
+
+
+@participants_bp.route("/form/<int:form_id>/qr-label")
+@login_required
+def qr_label(form_id):
+    """Fiche/Étiquette d'expédition imprimable avec QR Code scannable."""
+    form = ParticipantForm.query.get_or_404(form_id)
+    form.ensure_qr_token()
+    db.session.commit()
+
+    scan_url = url_for("participants.scan_qr", qr_token=form.qr_token, _external=True)
+
+    return render_template("participants/qr_label.html", form=form, scan_url=scan_url)
+
+
+@participants_bp.route("/form/<int:form_id>/photo")
+@login_required
+def serve_parcel_photo(form_id):
+    """Servir la photo du colis d'un formulaire donné."""
+    form = ParticipantForm.query.get_or_404(form_id)
+    if not form.sample_photo:
+        from flask import abort
+        abort(404)
+    directory = os.path.join(current_app.config["UPLOAD_FOLDER"], os.path.dirname(form.sample_photo))
+    filename = os.path.basename(form.sample_photo)
+    return send_from_directory(directory, filename)
+

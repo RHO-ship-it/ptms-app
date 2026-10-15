@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% block title %}Centre de Validation & Suivi{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+  <!-- ── Header ───────────────────────────────────────────────────────── -->
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
+    <div>
+      <h1 class="h3 fw-bold mb-1">
+        <i class="bi bi-patch-check-fill text-success me-2"></i>Centre de Validation
+      </h1>
+      <p class="text-muted mb-0">Validation technique des résultats soumis par les laboratoires participants</p>
+    </div>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-outline-success d-flex align-items-center gap-2" onclick="massValidate()">
+        <i class="bi bi-check-all"></i>Tout valider (Conformes)
+      </button>
+      <a href="{{ url_for('participants.tracker') }}" class="btn btn-primary d-flex align-items-center gap-2">
+        <i class="bi bi-truck"></i>Logistique & Colis
+      </a>
+    </div>
+  </div>
+
+  <!-- ── Sélecteur de Campagne ──────────────────────────────────────────── -->
+  <div class="d-flex align-items-center gap-2 mb-4 flex-wrap">
+    <span class="fw-semibold text-muted small me-1"><i class="bi bi-folder2-open me-1"></i>Campagne :</span>
+    {% for c in all_campaigns %}
+    <a href="{{ url_for('participants.validation_center', campaign_id=c.id, status=status_filter) }}"
+       class="btn btn-sm {{ 'btn-primary' if selected_campaign and selected_campaign.id == c.id else 'btn-outline-secondary' }}"
+       style="border-radius:20px; font-size:12.5px; font-weight:600;">
+      {% if c.status == 'active' %}<i class="bi bi-play-circle-fill me-1" style="color:{% if selected_campaign and selected_campaign.id == c.id %}#fff{% else %}#10B981{% endif %};"></i>{% endif %}
+      {{ c.reference }}
+    </a>
+    {% endfor %}
+  </div>
+
+  <!-- ── KPIs ─────────────────────────────────────────────────────────── -->
+  {% set total = items | length %}
+  {% set valides = items | selectattr('form.status','eq','validated') | list | length %}
+  {% set attente = items | selectattr('form.status','eq','submitted') | list | length %}
+  {% set anomalies = items | selectattr('form.status','eq','anomaly') | list | length %}
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm text-center h-100" style="border-radius:12px;background:#f8fafc;">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-dark">{{ total }}</div>
+          <div class="small text-muted fw-semibold">Soumissions totales</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm text-center h-100" style="border-radius:12px;background:#f0fdf4;">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-success">{{ valides }}</div>
+          <div class="small text-muted fw-semibold">Validées</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm text-center h-100" style="border-radius:12px;background:#eff6ff;">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-primary">{{ attente }}</div>
+          <div class="small text-muted fw-semibold">À valider</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm text-center h-100" style="border-radius:12px;background:#fef2f2;">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-danger">{{ anomalies }}</div>
+          <div class="small text-muted fw-semibold">Anomalies / Rejets</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Filtres ──────────────────────────────────────────────────────── -->
+  <div class="card border-0 shadow-sm mb-4" style="border-radius:14px;">
+    <div class="card-body py-3 px-4">
+      <form method="get" class="row g-3 align-items-center">
+        {% if selected_campaign %}
+        <input type="hidden" name="campaign_id" value="{{ selected_campaign.id }}">
+        {% endif %}
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold text-muted mb-1"><i class="bi bi-funnel me-1"></i>Statut de validation</label>
+          <select name="status" class="form-select border-0 bg-light" onchange="this.form.submit()" style="border-radius:8px;">
+            <option value="">Tous les statuts</option>
+            <option value="submitted" {{ 'selected' if status_filter=='submitted' }}>🟢 Soumis (En attente)</option>
+            <option value="anomaly" {{ 'selected' if status_filter=='anomaly' }}>🔴 Anomalie / Rejet</option>
+            <option value="validated" {{ 'selected' if status_filter=='validated' }}>✅ Validé</option>
+          </select>
+        </div>
+        {% if selected_campaign %}
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold text-muted mb-1"><i class="bi bi-flask me-1"></i>Essai</label>
+          <select name="trial_id" class="form-select border-0 bg-light" onchange="this.form.submit()" style="border-radius:8px;">
+            <option value="">Tous les essais</option>
+            {% for t in selected_campaign.trials %}
+            <option value="{{ t.id }}" {{ 'selected' if trial_id == t.id }}>{{ t.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+        <div class="col-md-4 text-end">
+          <a href="{{ url_for('participants.export_validation', status=status_filter) }}" class="btn btn-sm btn-outline-secondary mt-3">
+            <i class="bi bi-download me-1"></i>Exporter (Excel/CSV)
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Tableau Principal ────────────────────────────────────────────── -->
+  <div class="card border-0 shadow-sm" style="border-radius:16px; overflow:hidden;">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0" style="font-size:13px;">
+        <thead class="bg-light">
+          <tr>
+            <th class="ps-4">
+              <input class="form-check-input" type="checkbox" id="selectAll" onclick="toggleAll(this)">
+            </th>
+            <th>Campagne & Essai</th>
+            <th>Laboratoire</th>
+            <th>Résultat Soumis</th>
+            <th>Performance / Éval.</th>
+            <th>Statut Soumission</th>
+            <th class="text-end pe-4">Actions Validation</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          {% set f = item.form %}
+          {% set s = f.submission %}
+          <tr class="{% if f.status == 'anomaly' %}table-danger{% elif f.status == 'submitted' %}table-primary bg-opacity-10{% endif %}">
+            <td class="ps-4">
+              <input class="form-check-input row-checkbox" type="checkbox" value="{{ f.id }}" data-status="{{ f.status }}">
+            </td>
+            <td>
+              <div class="fw-bold text-dark">{{ f.trial.campaign.reference }}</div>
+              <div class="text-primary fw-semibold">{{ f.trial.name }}</div>
+              <div class="small text-muted">{{ f.trial.type_label() }}</div>
+            </td>
+            <td>
+              <div class="fw-bold">{{ f.laboratory.code }}</div>
+              <div class="small text-muted">{{ f.laboratory.name[:30] }}</div>
+              {% if s and s.iso17025_accredited %}
+              <span class="badge bg-primary bg-opacity-10 text-primary border border-primary mt-1" style="font-size:10px;">ISO 17025</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if s %}
+              <div class="fw-bold fs-6">
+                {{ s.value if s.value is not none else (s.qualitative_result or '—') }}
+                {% if s.value is not none and f.trial.unit %}<small class="text-muted fw-normal">{{ f.trial.unit }}</small>{% endif %}
+              </div>
+              <div class="small text-muted mt-1">
+                Soumis : {{ s.submitted_at.strftime('%d/%m/%Y %H:%M') if s.submitted_at else '—' }}
+                {% if s.confirmed %}<i class="bi bi-shield-check text-success ms-1" title="Confirmé"></i>{% endif %}
+              </div>
+              {% else %}
+              <span class="text-muted italic">Non soumis</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if s %}
+                {% if f.trial.trial_type == 'quantitative' and s.z_score is not none %}
+                  {% set z = s.z_score %}
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="badge px-2 py-1 fs-6 {% if z | abs <= 2 %}bg-success{% elif z | abs <= 3 %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                      z = {{ z }}
+                    </span>
+                    {% if s.en_score is not none %}
+                      <span class="badge bg-light text-dark border">En = {{ s.en_score }}</span>
+                    {% endif %}
+                  </div>
+                  {% if item.average is not none %}
+                  <div class="small text-muted mt-1">Moyenne essai : {{ item.average }}</div>
+                  {% endif %}
+
+                {% elif f.trial.trial_type == 'qualitative' and s.qualitative_conform is not none %}
+                  <span class="badge fs-6 {% if s.qualitative_conform %}bg-success{% else %}bg-danger{% endif %}">
+                    {{ '✓ Conforme' if s.qualitative_conform else '✗ Non conforme' }}
+                  </span>
+
+                {% elif f.trial.trial_type == 'solidite' %}
+                  <span class="badge bg-secondary">Solidité soumise</span>
+                {% else %}
+                  <span class="text-muted small">Éval. non dispo</span>
+                {% endif %}
+              {% endif %}
+            </td>
+            <td>
+              <span class="badge px-3 py-2 rounded-pill
+                {% if f.status == 'validated' %}bg-success
+                {% elif f.status == 'submitted' %}bg-primary
+                {% elif f.status == 'anomaly' %}bg-danger
+                {% endif %}">
+                <i class="bi bi-{% if f.status == 'validated' %}check-circle{% elif f.status == 'submitted' %}clock{% else %}exclamation-triangle{% endif %} me-1"></i>
+                {{ f.status | upper }}
+              </span>
+            </td>
+            <td class="text-end pe-4">
+              <div class="d-flex justify-content-end gap-1 flex-wrap">
+                {% if s %}
+                <a href="{{ url_for('participants.submission_summary_pdf', form_id=f.id) }}"
+                   class="btn btn-sm btn-outline-secondary" title="Télécharger le PDF d'origine">
+                  <i class="bi bi-file-pdf"></i>
+                </a>
+                {% if s.attachment_filename %}
+                <a href="{{ url_for('participants.download_attachment', form_id=f.id) }}"
+                   class="btn btn-sm btn-outline-info" title="Pièce jointe du labo">
+                  <i class="bi bi-paperclip"></i>
+                </a>
+                {% endif %}
+                {% endif %}
+
+                {% if f.status != 'validated' %}
+                <!-- Valider individuellement -->
+                <form method="POST" action="{{ url_for('participants.validate_submission', form_id=f.id) }}" class="d-inline">
+                  {% if selected_campaign %}
+                  <input type="hidden" name="campaign_id" value="{{ selected_campaign.id }}">
+                  {% endif %}
+                  <button type="submit" class="btn btn-sm btn-success fw-semibold" title="Valider">
+                    <i class="bi bi-check-lg"></i>
+                  </button>
+                </form>
+
+                <!-- Bouton Rejeter (ouvre modale) -->
+                <button type="button" class="btn btn-sm btn-outline-danger fw-semibold" title="Rejeter"
+                        onclick="openRejectModal('{{ f.id }}', '{{ f.laboratory.code }}', '{{ f.trial.name }}', '{{ selected_campaign.id if selected_campaign else '' }}')">
+                  <i class="bi bi-x-lg"></i>
+                </button>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center py-5 text-muted">Aucune soumission ne correspond aux filtres.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Modale de Rejet ────────────────────────────────────────────────── -->
+<div class="modal fade" id="rejectModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold text-danger"><i class="bi bi-exclamation-triangle me-2"></i>Rejeter la soumission</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="rejectForm">
+        <div class="modal-body">
+          <p class="mb-3">Rejet de la soumission de <strong id="rejectLab"></strong> pour l'essai <strong id="rejectTrial"></strong>.</p>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Motif du rejet / Anomalie</label>
+            <textarea name="reason" class="form-control" rows="3" required placeholder="Expliquez pourquoi cette soumission est rejetée (ex: document manquant, valeur aberrante non justifiée...)" style="border-radius:10px;"></textarea>
+            <div class="form-text mt-2"><i class="bi bi-info-circle me-1"></i>Le laboratoire sera automatiquement notifié pour corriger sa soumission.</div>
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-danger fw-bold">Confirmer le rejet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ── Formulaire invisible pour validation de masse ──────────────────── -->
+<form method="POST" action="{{ url_for('participants.mass_validate') }}" id="massValidateForm" class="d-none">
+  <input type="hidden" name="form_ids" id="massValidateIds">
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleAll(source) {
+  const checkboxes = document.querySelectorAll('.row-checkbox');
+  checkboxes.forEach(cb => cb.checked = source.checked);
+}
+
+function openRejectModal(formId, labCode, trialName, campaignId) {
+  document.getElementById('rejectLab').textContent = labCode;
+  document.getElementById('rejectTrial').textContent = trialName;
+  let action = '/participants/validation/' + formId + '/reject';
+  if (campaignId) action += '?campaign_id=' + campaignId;
+  document.getElementById('rejectForm').action = action;
+  new bootstrap.Modal(document.getElementById('rejectModal')).show();
+}
+
+function massValidate() {
+  const checked = document.querySelectorAll('.row-checkbox:checked');
+  const ids = [];
+  checked.forEach(cb => {
+    // On ne valide que si ce n'est pas déjà validé
+    if (cb.getAttribute('data-status') !== 'validated') {
+      ids.push(cb.value);
+    }
+  });
+
+  if (ids.length === 0) {
+    alert("Veuillez sélectionner au moins une soumission en attente à valider.");
+    return;
+  }
+
+  if (confirm(`Voulez-vous vraiment valider ces ${ids.length} soumission(s) ?`)) {
+    document.getElementById('massValidateIds').value = ids.join(',');
+    document.getElementById('massValidateForm').submit();
+  }
+}
+</script>
+{% endblock %}

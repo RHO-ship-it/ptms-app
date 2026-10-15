@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Statut Colis — {{ form.laboratory.code }}{% endblock %}
+
+{% block content %}
+
+<div class="ptms-breadcrumb">
+    <a href="{{ url_for('dashboard.index') }}"><i class="bi bi-grid-1x2 me-1"></i>Accueil</a>
+    <span class="ptms-breadcrumb-sep">/</span>
+    <a href="{{ url_for('participants.tracker') }}">Suivi Expéditions</a>
+    <span class="ptms-breadcrumb-sep">/</span>
+    <span>Aperçu Colis</span>
+</div>
+
+<div class="ptms-page-header">
+    <div>
+        <div class="ptms-page-title"><i class="bi bi-box-seam text-primary me-2"></i>Aperçu du Statut Colis</div>
+        <div class="ptms-page-subtitle">{{ form.laboratory.code }} — {{ form.laboratory.name }} / {{ form.trial.name }}</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('participants.tracker') }}" class="ptms-btn ptms-btn-ghost"><i class="bi bi-arrow-left me-1"></i>Retour</a>
+        <a href="{{ url_for('participants.qr_label', form_id=form.id) }}" target="_blank" class="ptms-btn ptms-btn-outline"><i class="bi bi-qr-code-scan me-1"></i>QR Étiquette</a>
+    </div>
+</div>
+
+<div class="row g-4">
+
+    <!-- Colonne principale : timeline -->
+    <div class="col-lg-7">
+        <div class="ptms-card">
+            <div class="ptms-card-header">
+                <i class="bi bi-signpost-split text-primary" style="font-size:17px;"></i>
+                <span class="ptms-card-title">Parcours du Colis</span>
+            </div>
+            <div class="ptms-card-body p-4">
+
+                {% set s1 = form.sample_code is not none %}
+                {% set s2 = form.dispatch_confirmed %}
+                {% set s3 = form.tracking_number is not none %}
+                {% set s4 = form.received %}
+                {% set s5 = form.submission is not none %}
+                {% set s6 = form.submission and form.submission.confirmed %}
+                {% set s7 = form.status == 'validated' %}
+
+                {% macro timeline_step(done, inprogress, icon, title, subtitle, date_str) %}
+                <div class="d-flex gap-3 mb-4">
+                    <div class="d-flex flex-column align-items-center" style="min-width:36px;">
+                        <div style="width:36px; height:36px; border-radius:50%;
+                            background:{% if done %}linear-gradient(135deg,#10b981,#059669){% elif inprogress %}linear-gradient(135deg,#f59e0b,#d97706){% else %}#e5e7eb{% endif %};
+                            display:flex; align-items:center; justify-content:center;
+                            box-shadow:{% if done %}0 2px 8px rgba(16,185,129,.35){% elif inprogress %}0 2px 8px rgba(245,158,11,.35){% else %}none{% endif %};">
+                            <i class="bi bi-{{ icon }}" style="color:{% if done or inprogress %}white{% else %}#9ca3af{% endif %}; font-size:15px;"></i>
+                        </div>
+                        <div style="flex:1; width:2px; background:{% if done %}#10b981{% else %}#e5e7eb{% endif %}; margin:4px 0; min-height:30px; border-radius:1px;"></div>
+                    </div>
+                    <div class="pb-3">
+                        <div class="fw-semibold" style="color:{% if done %}#065f46{% elif inprogress %}#92400e{% else %}#9ca3af{% endif %}; font-size:14px;">
+                            {{ title }}
+                            {% if done %}<span class="badge bg-success ms-2" style="font-size:9px; vertical-align:middle;">✓ Fait</span>{% endif %}
+                            {% if inprogress and not done %}<span class="badge bg-warning text-dark ms-2" style="font-size:9px; vertical-align:middle;">En cours</span>{% endif %}
+                        </div>
+                        <div class="text-muted small">{{ subtitle }}</div>
+                        {% if date_str %}
+                        <div class="text-muted" style="font-size:11px; margin-top:2px;"><i class="bi bi-clock me-1"></i>{{ date_str }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endmacro %}
+
+                {{ timeline_step(s1, not s1, 'box', 'Préparation de l\'échantillon', 'Code attribué : ' ~ (form.sample_code or '—'), '') }}
+                {{ timeline_step(s2, s1 and not s2, 'send', 'Expédition confirmée', (form.sample_quantity|string ~ ' échantillon(s) envoyé(s) via ' ~ (form.carrier or 'transporteur')) if s2 else 'En attente de confirmation d\'envoi', form.dispatch_date.strftime('%d/%m/%Y') if form.dispatch_date else '') }}
+                {{ timeline_step(s3, s2 and not s3, 'truck', 'Numéro de suivi enregistré', form.tracking_number if s3 else 'Numéro de suivi non encore saisi', '') }}
+                {{ timeline_step(s4, s3 and not s4, 'box-seam-fill', 'Réception du colis confirmée', 'Colis réceptionné par le laboratoire' if s4 else 'En attente de réception', form.reception_date.strftime('%d/%m/%Y %H:%M') if form.reception_date else '') }}
+                {{ timeline_step(s5, s4 and not s5, 'pencil-fill', 'Résultat soumis par le laboratoire', 'Le laboratoire a soumis ses résultats d\'analyse' if s5 else 'En attente de soumission', form.submission.submitted_at.strftime('%d/%m/%Y %H:%M') if form.submission and form.submission.submitted_at else '') }}
+                {{ timeline_step(s6, s5 and not s6, 'shield-check', 'Soumission confirmée par le labo', 'Le laboratoire a confirmé et finalisé sa soumission' if s6 else 'En attente de confirmation', form.submission.confirmed_at.strftime('%d/%m/%Y %H:%M') if form.submission and form.submission.confirmed_at else '') }}
+                {{ timeline_step(s7, s6 and not s7, 'patch-check-fill', 'Résultats validés par l\'organisateur', 'Validation finale par le chef technique' if s7 else 'En attente de validation', form.submission.validated_at.strftime('%d/%m/%Y %H:%M') if form.submission and form.submission.validated_at else '') }}
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Colonne droite : infos + photo -->
+    <div class="col-lg-5">
+
+        <!-- Infos colis -->
+        <div class="ptms-card mb-4">
+            <div class="ptms-card-header">
+                <i class="bi bi-info-circle text-primary" style="font-size:17px;"></i>
+                <span class="ptms-card-title">Informations Colis</span>
+            </div>
+            <div class="ptms-card-body">
+                <table class="table table-sm table-borderless mb-0" style="font-size:13px;">
+                    <tr>
+                        <td class="text-muted fw-semibold" style="width:40%;">Campagne</td>
+                        <td><span class="badge bg-primary px-2 py-1" style="font-size:12px;">{{ form.trial.campaign.reference }}</span> — {{ form.trial.campaign.name }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted fw-semibold">Code Échantillon</td>
+                        <td>
+                            {% if form.sample_code %}
+                            <code class="fw-bold fs-6 text-dark" style="font-family:monospace;">{{ form.sample_code }}</code>
+                            {% else %}<span class="text-muted">—</span>{% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted fw-semibold">Date d'envoi</td>
+                        <td>
+                            {% if form.dispatch_date %}
+                            <strong class="text-dark"><i class="bi bi-calendar-event me-1 text-primary"></i>{{ form.dispatch_date.strftime('%d/%m/%Y') }}</strong>
+                            {% else %}<span class="text-muted">—</span>{% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted fw-semibold">Essai / Paramètre</td>
+                        <td><strong>{{ form.trial.name }}</strong></td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted fw-semibold">Nb. Échantillons</td>
+                        <td>
+                            {% if form.sample_quantity %}
+                            <span class="badge bg-secondary" style="font-size:11.5px;">{{ form.sample_quantity }} échantillon(s)</span>
+                            {% else %}<span class="text-muted">—</span>{% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted fw-semibold">Transporteur</td>
+                        <td>{{ form.carrier or '—' }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted fw-semibold">Tracking N°</td>
+                        <td>
+                            {% if form.tracking_number %}
+                            <code class="text-primary fw-bold">{{ form.tracking_number }}</code>
+                            {% set c = (form.carrier or '')|lower %}
+                            {% if 'dhl' in c %}
+                            <br><a href="https://www.dhl.com/global-en/home/tracking.html?tracking-id={{ form.tracking_number }}" target="_blank" class="small text-decoration-none"><i class="bi bi-box-arrow-up-right"></i> Suivre sur DHL</a>
+                            {% elif 'poste' in c or 'rapid' in c %}
+                            <br><a href="https://www.rapidposte.poste.tn/fr/Item_Events.asp?Item_ID={{ form.tracking_number }}" target="_blank" class="small text-decoration-none"><i class="bi bi-box-arrow-up-right"></i> Suivre RapidPoste</a>
+                            {% endif %}
+                            {% else %}<span class="text-muted">—</span>{% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted fw-semibold">Statut Réception</td>
+                        <td>
+                            {% if form.received %}
+                            <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Reçu le {{ form.reception_date.strftime('%d/%m/%Y %H:%M') if form.reception_date else 'oui' }}</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark"><i class="bi bi-clock me-1"></i>En attente de réception</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Photo des échantillons -->
+        {% if form.sample_photo %}
+        <div class="ptms-card">
+            <div class="ptms-card-header">
+                <i class="bi bi-camera text-primary" style="font-size:17px;"></i>
+                <span class="ptms-card-title">Photo des Échantillons Envoyés</span>
+            </div>
+            <div class="ptms-card-body p-2 text-center">
+                <img src="{{ url_for('participants.serve_parcel_photo', form_id=form.id) }}"
+                     alt="Photo des échantillons" class="img-fluid rounded-3" style="max-height:280px; object-fit:contain;">
+                <p class="text-muted small mt-2 mb-0"><i class="bi bi-shield-check text-success me-1"></i>Photo de preuve d'expédition enregistrée</p>
+            </div>
+        </div>
+        {% else %}
+        <div class="ptms-card">
+            <div class="ptms-card-body text-center py-4">
+                <i class="bi bi-camera text-muted" style="font-size:40px; opacity:.3;"></i>
+                <p class="text-muted small mt-2 mb-0">Aucune photo d'échantillons enregistrée.</p>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+
+{% endblock %}

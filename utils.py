@@ -1,9 +1,10 @@
 import math
 import json
+from datetime import datetime, date, timedelta
 from collections import Counter
 from flask_login import current_user
 from extensions import db
-from models import AuditLog, Notification, User
+from models import AuditLog, Notification, User, ParticipantForm, Trial
 
 
 def log_action(action, entity_type=None, entity_id=None, details=None):
@@ -24,10 +25,22 @@ def log_action(action, entity_type=None, entity_id=None, details=None):
 
 
 def notify(user_id, message, link=None):
-    """Crée une notification pour un utilisateur."""
+    """Crée une notification pour un utilisateur et envoie un email."""
     n = Notification(user_id=user_id, message=message, link=link)
     db.session.add(n)
     db.session.commit()
+    
+    # Envoi d'email
+    from emails import send_email
+    user = User.query.get(user_id)
+    if user and user.email:
+        subject = "Notification PTMS"
+        body = f"Bonjour {user.username},\n\nVous avez une nouvelle notification :\n{message}"
+        if link:
+            # Note: en prod, on ajouterait le domaine absolu
+            body += f"\n\nLien : {link}"
+        send_email(user.email, subject, body)
+        
     return n
 
 
@@ -36,6 +49,66 @@ def notify_role(role, message, link=None):
     users = User.query.filter_by(role=role, active=True).all()
     for u in users:
         notify(u.id, message, link)
+
+
+def send_deadline_reminders(days_threshold=5):
+    """
+    Parcourt les formulaires participants en attente de soumission et envoie
+    des notifications/e-mails automatiques de rappel pour les deadlines proches ou dépassées.
+    """
+    today = date.today()
+    pending_forms = ParticipantForm.query.filter(
+        ParticipantForm.status.in_(["pending", "draft"])
+    ).all()
+
+    reminders_sent = 0
+    notified_labs = set()
+
+    for form in pending_forms:
+        trial = form.trial
+        if not trial or not trial.due_date:
+            continue
+
+        days_left = (trial.due_date - today).days
+
+        # Relancer si l'échéance est dans <= days_threshold jours ou dépassée
+        if days_left <= days_threshold:
+            lab = form.laboratory
+            if not lab:
+                continue
+
+            due_str = trial.due_date.strftime("%d/%m/%Y")
+            if days_left < 0:
+                msg = f"⚠️ DEADLINE DÉPASSÉE ({abs(days_left)}j) : L'essai '{trial.name}' ({trial.campaign.reference}) avait pour date limite le {due_str}. Veuillez soumettre vos résultats immédiatement."
+            elif days_left == 0:
+                msg = f"⏳ RAPPEL DEADLINE AUJOURD'HUI : L'échéance pour l'essai '{trial.name}' ({trial.campaign.reference}) est aujourd'hui ({due_str})."
+            else:
+                msg = f"🔔 RAPPEL DEADLINE ({days_left}j restants) : Date limite de l'essai '{trial.name}' ({trial.campaign.reference}) fixée au {due_str}."
+
+            link = f"/participants/forms/{form.id}"
+
+            # Notifier les comptes utilisateurs rattachés au laboratoire
+            lab_users = User.query.filter_by(laboratory_id=lab.id, active=True).all()
+            for u in lab_users:
+                notify(u.id, msg, link=link)
+                reminders_sent += 1
+
+            notified_labs.add(lab.code)
+
+    # Journaliser l'exécution automatique des relances
+    if reminders_sent > 0:
+        log_action(
+            "deadline_reminders_sent",
+            entity_type="Notification",
+            details=f"Relances automatiques envoyées à {len(notified_labs)} laboratoires ({reminders_sent} notifications générées).",
+        )
+
+    return {
+        "reminders_sent": reminders_sent,
+        "labs_count": len(notified_labs),
+        "labs": list(notified_labs),
+    }
+
 
 
 # ===========================================================================
@@ -923,3 +996,527 @@ def compute_stability(first_value, last_value, sigma_pt):
     difference = abs(last_value - first_value)
     criterion = 0.3 * sigma_pt
     return {"criterion": round(criterion, 5), "conform": difference <= criterion, "difference": round(difference, 5)}
+
+
+# ===========================================================================
+# NOUVELLES FONCTIONS STATISTIQUES AVANCÉES
+# ===========================================================================
+
+def compute_cohen_kappa(results_list):
+    """
+    Coefficient Kappa de Cohen pour essais qualitatifs (ISO 13528 §9.5 / ISO 17043).
+    Mesure l'accord inter-laboratoires au-delà du hasard.
+    kappa = (P_o - P_e) / (1 - P_e)
+    Interprétation :
+        kappa >= 0.81 → Accord quasi-parfait
+        0.61-0.80    → Accord fort
+        0.41-0.60    → Accord modéré
+        0.21-0.40    → Accord faible
+        <= 0.20      → Accord très faible / aléatoire
+    """
+    cleaned = [r.strip().lower() for r in results_list if r]
+    n = len(cleaned)
+    if n < 2:
+        return {
+            "kappa": None, "interpretation": "Données insuffisantes",
+            "badge": "secondary", "p_observed": None, "p_expected": None,
+        }
+
+    counts = Counter(cleaned)
+    categories = list(counts.keys())
+    total = n
+
+    # P_o : proportion observée de l'accord (tous d'accord avec le consensus)
+    consensus = counts.most_common(1)[0][0]
+    p_observed = counts[consensus] / total
+
+    # P_e : proportion d'accord attendue par hasard
+    p_expected = sum((count / total) ** 2 for count in counts.values())
+
+    if p_expected >= 1.0:
+        kappa = 1.0
+    else:
+        kappa = (p_observed - p_expected) / (1.0 - p_expected)
+
+    kappa = round(kappa, 4)
+
+    if kappa >= 0.81:
+        interp, badge = "Accord quasi-parfait", "success"
+    elif kappa >= 0.61:
+        interp, badge = "Accord fort", "success"
+    elif kappa >= 0.41:
+        interp, badge = "Accord modéré", "info"
+    elif kappa >= 0.21:
+        interp, badge = "Accord faible", "warning"
+    else:
+        interp, badge = "Accord très faible / aléatoire", "danger"
+
+    return {
+        "kappa": kappa,
+        "interpretation": interp,
+        "badge": badge,
+        "p_observed": round(p_observed, 4),
+        "p_expected": round(p_expected, 4),
+        "n": n,
+        "categories": {k: v for k, v in counts.items()},
+        "consensus": consensus,
+    }
+
+
+def qualitative_weighted_agreement(results, ordered_categories=None):
+    """
+    Taux d'accord pondéré pour essais qualitatifs à échelle ordinale.
+    Si les résultats sont des notes (ex: 1, 2, 3, 4, 5 pour solidité),
+    pondère le désaccord selon la distance ordinale entre réponses.
+    Retourne : accord_exact (%), accord_pondéré (%), écart_moyen
+    """
+    cleaned = [str(r).strip() for r in results if r is not None]
+    n = len(cleaned)
+    if n < 2:
+        return {"exact_agreement": 0.0, "weighted_agreement": None, "mean_deviation": None}
+
+    counts = Counter(cleaned)
+    consensus = counts.most_common(1)[0][0]
+    exact_agreement = round(counts[consensus] / n * 100, 1)
+
+    # Si catégories ordonnées fournies, calculer la distance moyenne
+    if ordered_categories:
+        try:
+            positions = {str(c): i for i, c in enumerate(ordered_categories)}
+            consensus_pos = positions.get(consensus, 0)
+            deviations = []
+            for r in cleaned:
+                pos = positions.get(r, 0)
+                deviations.append(abs(pos - consensus_pos))
+            mean_deviation = round(sum(deviations) / n, 3)
+            max_possible = len(ordered_categories) - 1
+            weighted_agreement = round((1 - mean_deviation / max_possible) * 100, 1) if max_possible > 0 else exact_agreement
+        except Exception:
+            mean_deviation = None
+            weighted_agreement = None
+    else:
+        mean_deviation = None
+        weighted_agreement = None
+
+    return {
+        "exact_agreement": exact_agreement,
+        "weighted_agreement": weighted_agreement,
+        "mean_deviation": mean_deviation,
+        "consensus": consensus,
+        "n": n,
+    }
+
+
+def solidite_matrix_stats(submissions, solidite_params=None):
+    """
+    Analyse matricielle des résultats de solidité des couleurs (EN ISO 105).
+    Pour chaque paramètre de solidité (couleur, CA, CO, PA, PES, PAN, WO, CTA, CV),
+    calcule : distribution des notes, note consensuelle (médiane/mode), taux de conformité.
+    Retourne une structure matricielle pour heatmap.
+    """
+    if solidite_params is None:
+        solidite_params = [
+            {"key": "couleur", "label": "Dégradation couleur"},
+            {"key": "CA", "label": "Acétate (CA)"},
+            {"key": "CO", "label": "Coton (CO)"},
+            {"key": "PA", "label": "Polyamide (PA)"},
+            {"key": "PES", "label": "Polyester (PES)"},
+            {"key": "PAN", "label": "Polyacrylique (PAN)"},
+            {"key": "WO", "label": "Laine (WO)"},
+            {"key": "CTA", "label": "Triacétate (CTA)"},
+            {"key": "CV", "label": "Viscose (CV)"},
+        ]
+
+    # Construire la matrice : lab_code -> {param: note}
+    matrix = []
+    param_stats = {}
+
+    for param in solidite_params:
+        key = param["key"]
+        notes = []
+        for s in submissions:
+            data = {}
+            if s.solidite_data:
+                try:
+                    import json as _json
+                    data = _json.loads(s.solidite_data)
+                except Exception:
+                    pass
+            val = data.get(key)
+            if val is not None:
+                try:
+                    notes.append(float(val))
+                except (ValueError, TypeError):
+                    pass
+
+        if notes:
+            note_counts = Counter([int(round(n)) for n in notes])
+            consensus_note = int(round(compute_median(notes)))
+            # Mode
+            mode_note = note_counts.most_common(1)[0][0]
+            mean_note = round(sum(notes) / len(notes), 2)
+            sd_note = round(std_dev(notes), 3) if len(notes) > 1 else 0.0
+            conformes = sum(1 for n in notes if n >= 4)
+            conformity_rate = round(conformes / len(notes) * 100, 1)
+        else:
+            consensus_note = None
+            mode_note = None
+            mean_note = None
+            sd_note = None
+            conformity_rate = None
+            note_counts = {}
+
+        param_stats[key] = {
+            "label": param["label"],
+            "notes": notes,
+            "n": len(notes),
+            "consensus": consensus_note,
+            "mode": mode_note,
+            "mean": mean_note,
+            "sd": sd_note,
+            "distribution": dict(note_counts),
+            "conformity_rate": conformity_rate,
+        }
+
+    # Construire la matrice par laboratoire
+    for s in submissions:
+        data = {}
+        if s.solidite_data:
+            try:
+                import json as _json
+                data = _json.loads(s.solidite_data)
+            except Exception:
+                pass
+        row = {
+            "lab_code": s.form.laboratory.code,
+            "lab_name": s.form.laboratory.name,
+            "params": {},
+            "overall_score": None,
+            "is_deviant": False,
+        }
+        scores = []
+        for param in solidite_params:
+            key = param["key"]
+            val = data.get(key)
+            note = None
+            if val is not None:
+                try:
+                    note = float(val)
+                except (ValueError, TypeError):
+                    pass
+            consensus_note = param_stats[key].get("consensus")
+            deviant = False
+            if note is not None and consensus_note is not None:
+                deviant = abs(note - consensus_note) >= 2
+                scores.append(note)
+            row["params"][key] = {
+                "note": note,
+                "deviant": deviant,
+            }
+        if scores:
+            row["overall_score"] = round(sum(scores) / len(scores), 2)
+            row["is_deviant"] = any(row["params"][p["key"]]["deviant"] for p in solidite_params)
+        matrix.append(row)
+
+    # Calcul du radar (moyennes par paramètre pour graphique)
+    radar_data = []
+    for param in solidite_params:
+        key = param["key"]
+        stats = param_stats[key]
+        radar_data.append({
+            "label": param["label"],
+            "key": key,
+            "mean": stats["mean"] or 0,
+            "conformity_rate": stats["conformity_rate"] or 0,
+        })
+
+    return {
+        "matrix": matrix,
+        "param_stats": param_stats,
+        "radar_data": radar_data,
+        "params": solidite_params,
+    }
+
+
+def mandel_h_statistic(submissions, target_val, target_sd):
+    """
+    Statistique h de Mandel (ISO 5725-2 / ISO 13528) pour évaluation de la fidélité
+    inter-laboratoires. Détecte les laboratoires avec biais systématique.
+    h_i = (y_i - y_bar) / sqrt(sum((y_j - y_bar)^2) / (p-1))
+    Critères : |h| > h_crit(5%) → biais significatif
+    """
+    values = []
+    lab_codes = []
+    for s in submissions:
+        if s.value is not None:
+            values.append(s.value)
+            lab_codes.append(s.form.laboratory.code)
+
+    p = len(values)
+    if p < 3:
+        return {"results": [], "h_critical": None, "n": p}
+
+    mean_all = sum(values) / p
+    ss = sum((v - mean_all) ** 2 for v in values)
+    denom = math.sqrt(ss / (p - 1)) if ss > 0 else 1e-9
+
+    # Valeur critique de h (approximation standard, p. ex. table ISO 5725-2)
+    # h_crit(5%, p) ≈ (p-1)/sqrt(p) * t(5%/p, p-2) — approximation simplifiée
+    # On utilise la formule h_crit ≈ 1 + 3.5/sqrt(p) (approximation pratique)
+    h_critical = round(1.0 + 3.5 / math.sqrt(p), 3)
+
+    results = []
+    for lab_code, val in zip(lab_codes, values):
+        h = (val - mean_all) / denom
+        significant = abs(h) > h_critical
+        results.append({
+            "lab_code": lab_code,
+            "value": val,
+            "h": round(h, 3),
+            "significant": significant,
+        })
+
+    # Trier par |h| décroissant
+    results.sort(key=lambda r: abs(r["h"]), reverse=True)
+
+    return {
+        "results": results,
+        "h_critical": h_critical,
+        "n": p,
+        "mean": round(mean_all, 5),
+    }
+
+
+def compute_reliability_index(z_score, en_score=None, is_grubbs_outlier=False):
+    """
+    Indice de Fiabilité du Résultat (IFR) — Score composite par participant.
+    Combine z-score, En-score (si disponible) et statut Grubbs en un score 0-100.
+    IFR >= 80 : Excellent
+    IFR >= 60 : Satisfaisant
+    IFR >= 40 : Surveillance requise
+    IFR <  40 : Non satisfaisant
+    """
+    if z_score is None:
+        return {"ifr": None, "badge": "secondary", "label": "Non calculable"}
+
+    az = abs(z_score)
+
+    # Composante z-score (0-60 points)
+    if az <= 2.0:
+        z_pts = 60
+    elif az <= 3.0:
+        z_pts = max(0, int(60 - (az - 2.0) * 60))
+    else:
+        z_pts = 0
+
+    # Composante En (0-30 points, si disponible)
+    if en_score is not None:
+        ae = abs(en_score)
+        if ae < 1.0:
+            en_pts = 30
+        elif ae < 2.0:
+            en_pts = max(0, int(30 - (ae - 1.0) * 30))
+        else:
+            en_pts = 0
+    else:
+        # En non disponible : redistribuer vers z_score
+        en_pts = 20 if az <= 2.0 else (10 if az <= 3.0 else 0)
+
+    # Pénalité Grubbs (-10 points)
+    grubbs_penalty = -10 if is_grubbs_outlier else 0
+
+    ifr = max(0, min(100, z_pts + en_pts + grubbs_penalty))
+
+    if ifr >= 80:
+        badge, label = "success", "Excellent"
+    elif ifr >= 60:
+        badge, label = "info", "Satisfaisant"
+    elif ifr >= 40:
+        badge, label = "warning", "Surveillance requise"
+    else:
+        badge, label = "danger", "Non satisfaisant"
+
+    return {"ifr": ifr, "badge": badge, "label": label}
+
+
+def detect_systematic_trend(z_scores_history):
+    """
+    Détection de tendance systématique ISO (ISO 13528 §9.6 / règle de Westgard).
+    Alerte si >= 3 z-scores consécutifs du même signe (biais systématique probable).
+    z_scores_history : liste ordonnée de z-scores (du plus ancien au plus récent).
+    Retourne : alerte booléenne + message.
+    """
+    if not z_scores_history or len(z_scores_history) < 3:
+        return {"trend_detected": False, "message": "Historique insuffisant (< 3 points)", "streak": 0}
+
+    # Filtrer None
+    zs = [z for z in z_scores_history if z is not None]
+    if len(zs) < 3:
+        return {"trend_detected": False, "message": "Données insuffisantes", "streak": 0}
+
+    # Chercher la série la plus longue de signe identique en fin de liste
+    last_sign = (1 if zs[-1] > 0 else -1) if zs[-1] != 0 else 0
+    streak = 1
+    for i in range(len(zs) - 2, -1, -1):
+        current_sign = (1 if zs[i] > 0 else -1) if zs[i] != 0 else 0
+        if current_sign == last_sign and last_sign != 0:
+            streak += 1
+        else:
+            break
+
+    if streak >= 3:
+        direction = "positifs" if last_sign > 0 else "négatifs"
+        msg = f"⚠️ Tendance systématique détectée : {streak} z-scores consécutifs {direction}. Vérifier le biais du laboratoire."
+        return {"trend_detected": True, "message": msg, "streak": streak, "direction": direction}
+
+    return {
+        "trend_detected": False,
+        "message": f"Aucune tendance détectée (série actuelle : {streak})",
+        "streak": streak,
+    }
+
+
+def build_tools_summary(trial_type, stats, participant_results=None):
+    """
+    Construit la liste structurée des outils statistiques utilisés lors du traitement.
+    Retourne une liste de dicts : {outil, reference, description, resultat, status}.
+    Utilisé pour le tableau récapitulatif 'Outils Statistiques Utilisés' du dashboard.
+    """
+    tools = []
+
+    if trial_type == "quantitative":
+        # Algorithme A
+        alg_a = stats.get("alg_a") or {}
+        if alg_a.get("x_pt") is not None:
+            tools.append({
+                "outil": "Algorithme A",
+                "reference": "ISO 13528 §C.3.1 / TTS §5.1.3.1",
+                "description": "Estimation robuste itérative de la valeur assignée (x_pt) et de l'écart-type (σ_pt)",
+                "resultat": f"x_pt = {alg_a.get('x_pt')} | σ_pt = {alg_a.get('sigma_pt')} | {alg_a.get('iterations')} itérations",
+                "status": "success" if not alg_a.get("high_outliers_warning") else "warning",
+                "warning": "Taux d'aberrants > 20% — Médiane recommandée" if alg_a.get("high_outliers_warning") else None,
+            })
+
+        # Médiane / MADe
+        med = stats.get("med_stats") or {}
+        if med.get("median") is not None:
+            tools.append({
+                "outil": "Médiane / MADe / nIQR",
+                "reference": "ISO 13528 §C.3.1 / TTS §5.1.3.2",
+                "description": "Estimateurs robustes non paramétriques : Médiane, Écart Médian Absolu normalisé",
+                "resultat": f"Médiane = {med.get('median')} | MADe = {med.get('made')} | nIQR = {med.get('niqr')}",
+                "status": "info",
+            })
+
+        # M-Estimateur
+        m_est = stats.get("m_est") or {}
+        if m_est.get("mu_hat") is not None:
+            tools.append({
+                "outil": "M-Estimateur Logistique",
+                "reference": "TTS §5.1.3.2",
+                "description": "Estimation robuste avec fonction d'influence logistique (poids pondérés par distance)",
+                "resultat": f"μ̂ = {m_est.get('mu_hat')} | σ_robuste = {m_est.get('sigma_robuste')} | {m_est.get('iterations')} itérations",
+                "status": "info",
+            })
+
+        # Grubbs
+        grubbs = stats.get("grubbs") or {}
+        if grubbs.get("G") is not None:
+            st = grubbs.get("status", "")
+            tools.append({
+                "outil": "Test de Grubbs (simple & double)",
+                "reference": "ISO 13528 / TTS §A1.4",
+                "description": "Détection des valeurs aberrantes (*) et isolées (**) par statistique G vs. valeurs critiques à 1% et 5%",
+                "resultat": f"G = {grubbs.get('G')} | G_crit(5%) = {grubbs.get('G_critical_5')} | G_crit(1%) = {grubbs.get('G_critical_1')} → {st}",
+                "status": "danger" if "aberrante" in st else ("warning" if "isolée" in st else "success"),
+            })
+
+        # Droite d'Henry
+        henry = stats.get("henry") or {}
+        if henry.get("r_squared") is not None:
+            tools.append({
+                "outil": "Droite d'Henry",
+                "reference": "TTS §A1.1",
+                "description": "Vérification graphique de la normalité par corrélation rang-normit (R²)",
+                "resultat": f"R² = {henry.get('r_squared')} → {'Distribution normale' if henry.get('normal_conform') else 'Distribution non normale'}",
+                "status": "success" if henry.get("normal_conform") else "warning",
+            })
+
+        # K-S
+        ks = stats.get("ks") or {}
+        if ks.get("d_max") is not None:
+            tools.append({
+                "outil": "Test de Kolmogorov-Smirnov",
+                "reference": "TTS §A1.6",
+                "description": "Test non paramétrique de normalité : D_max observé vs. D_critique (α=5%)",
+                "resultat": f"D_max = {ks.get('d_max')} | D_crit = {ks.get('d_critical')} → {'Normale ✓' if ks.get('is_normal') else 'Non normale ✗'}",
+                "status": "success" if ks.get('is_normal') else "warning",
+            })
+
+        # Kurtosis / Skewness
+        ks2 = stats.get("kurt_skew") or {}
+        if ks2.get("kurtosis") is not None:
+            tools.append({
+                "outil": "Kurtosis & Asymétrie (Skewness)",
+                "reference": "TTS §A1.7-A1.8",
+                "description": "Mesures de forme de la distribution : aplatissement (K) et asymétrie (g1)",
+                "resultat": f"K = {ks2.get('kurtosis')} ({ks2.get('kurtosis_type')}) | g1 = {ks2.get('skewness')} ({ks2.get('skewness_type')})",
+                "status": "info",
+            })
+
+        # Boxplot
+        bp = stats.get("boxplot") or {}
+        if bp.get("q1") is not None:
+            n_outliers = len(bp.get("outliers", []))
+            tools.append({
+                "outil": "Boîte à Moustaches (Boxplot)",
+                "reference": "TTS §A1.2",
+                "description": "Représentation des quartiles Q1, Médiane, Q3 et détection des outliers hors moustaches (1.5×IQR)",
+                "resultat": f"Q1={bp.get('q1')} | Q3={bp.get('q3')} | IQR={bp.get('iqr')} | {n_outliers} outlier(s) détecté(s)",
+                "status": "warning" if n_outliers > 0 else "success",
+            })
+
+        # z-score
+        tools.append({
+            "outil": "z-score / z'-score",
+            "reference": "ISO 13528 §9.2-9.4 / TTS §5.1.4",
+            "description": "Évaluation de la performance de chaque participant par rapport à la valeur assignée et σ_pt",
+            "resultat": "Satisfaisant |z|≤2 | Douteux 2<|z|<3 | Non satisfaisant |z|≥3",
+            "status": "info",
+        })
+
+    elif trial_type == "qualitative":
+        tools.append({
+            "outil": "Consensus Qualitatif (Mode)",
+            "reference": "ISO 13528 §9.5 / ISO 17043",
+            "description": "Résultat consensuel = réponse la plus fréquente (mode) parmi les participants",
+            "resultat": f"Taux d'accord = {stats.get('agreement_rate', 'N/A')}%",
+            "status": "success" if (stats.get("agreement_rate") or 0) >= 80 else "warning",
+        })
+        kappa = stats.get("kappa") or {}
+        if kappa.get("kappa") is not None:
+            tools.append({
+                "outil": "Coefficient Kappa de Cohen",
+                "reference": "ISO 13528 / Statistiques inter-juges",
+                "description": "Mesure de l'accord inter-laboratoires corrigé du hasard",
+                "resultat": f"κ = {kappa.get('kappa')} → {kappa.get('interpretation')}",
+                "status": kappa.get("badge", "info"),
+            })
+
+    elif trial_type == "solidite":
+        tools.append({
+            "outil": "Analyse Matricielle Solidité",
+            "reference": "EN ISO 105 / ISO 13528 (adapté)",
+            "description": "Distribution et consensus des notes (1-5) pour chaque paramètre de solidité des couleurs",
+            "resultat": f"{len(stats.get('param_stats', {}))} paramètres analysés",
+            "status": "info",
+        })
+        tools.append({
+            "outil": "Taux de Conformité par Paramètre",
+            "reference": "EN ISO 105-A02/A04",
+            "description": "Proportion des notes ≥ 4 (Bon à Excellent) par paramètre de solidité",
+            "resultat": "Voir heatmap et tableau détaillé",
+            "status": "info",
+        })
+
+    return tools

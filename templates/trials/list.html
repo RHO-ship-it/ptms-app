@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Essais{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="bi bi-flask"></i> Essais — {{ campaign.reference }}</h3>
+    {% if current_user.role in ['admin','chef_technique'] %}
+    <a href="{{ url_for('trials.new_trial', campaign_id=campaign.id) }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Nouvel essai</a>
+    {% endif %}
+</div>
+
+<div class="card card-kpi p-3">
+    <table class="table table-hover">
+        <thead><tr><th>Nom</th><th>Type</th><th>Paramètre</th><th>Unité</th><th>Méthode</th><th>Val. assignée / Résultat attendu</th><th>Sigma</th><th>Échéance</th><th></th></tr></thead>
+        <tbody>
+        {% for t in trials %}
+            <tr>
+                <td>{{ t.name }}</td>
+                <td><span class="badge bg-secondary">{{ t.type_label() }}</span></td>
+                <td>{{ t.parameter }}</td><td>{{ t.unit }}</td><td>{{ t.method }}</td>
+                <td>
+                    {% if t.trial_type == 'quantitative' %}
+                        {{ t.target_value if t.target_value is not none else '-' }}
+                    {% else %}
+                        {{ t.expected_qualitative_result or '-' }}
+                    {% endif %}
+                </td>
+                <td>{{ t.target_sd if t.target_sd is not none else '-' }}</td>
+                <td>{{ t.due_date.strftime('%d/%m/%Y') if t.due_date else '-' }}</td>
+                <td class="d-flex gap-1">
+                    {% if current_user.role in ['admin','chef_technique'] %}
+                    <a href="{{ url_for('trials.edit_trial', trial_id=t.id) }}" class="btn btn-sm btn-outline-secondary">Modifier</a>
+                    {% endif %}
+                    {% if current_user.role == 'admin' %}
+                    <form action="{{ url_for('trials.delete_trial', trial_id=t.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cet essai ? (Action irréversible : supprime résultats associés)');">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </form>
+                    {% endif %}
+                    {% if t.trial_type == 'quantitative' %}
+                    <a href="{{ url_for('homogeneity.assess', trial_id=t.id) }}" class="btn btn-sm btn-outline-info" title="Homogénéité / Stabilité (ISO 13528 Annexe B)">
+                        <i class="bi bi-shield-check"></i>
+                        {% if t.homogeneity_assessment and t.homogeneity_assessment.homogeneity_conform is not none %}
+                            {% if t.homogeneity_assessment.homogeneity_conform and (t.homogeneity_assessment.stability_conform is none or t.homogeneity_assessment.stability_conform) %}
+                                <span class="badge bg-success ms-1">OK</span>
+                            {% else %}
+                                <span class="badge bg-danger ms-1">!</span>
+                            {% endif %}
+                        {% endif %}
+                    </a>
+                    {% endif %}
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="9" class="text-center text-muted">Aucun essai pour cette campagne.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+<a href="{{ url_for('campaigns.view_campaign', campaign_id=campaign.id) }}" class="btn btn-outline-secondary mt-3">
+    <i class="bi bi-arrow-left"></i> Retour à la campagne
+</a>
+{% endblock %}

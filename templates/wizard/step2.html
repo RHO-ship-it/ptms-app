@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Wizard - Étape 2{% endblock %}
+{% block content %}
+{% include "wizard/_progress.html" %}
+<h4 class="mb-3">Étape 2 / 5 — Essais de la campagne</h4>
+
+<div class="card card-kpi p-4 mb-3">
+    <h6>Ajouter un essai</h6>
+    <form method="POST" class="row g-2 align-items-end">
+        <input type="hidden" name="action" value="add_trial">
+        <div class="col-md-3">
+            <label class="form-label small">Nom de l'essai</label>
+            <input type="text" class="form-control" name="trial_name" required>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">Type d'essai</label>
+            <select class="form-select" name="trial_type">
+                <option value="quantitative">Quantitatif</option>
+                <option value="qualitative">Qualitatif</option>
+                <option value="solidite">Solidité</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">Paramètre</label>
+            <input type="text" class="form-control" name="parameter">
+        </div>
+        <div class="col-md-1">
+            <label class="form-label small">Unité</label>
+            <input type="text" class="form-control" name="unit">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">Méthode</label>
+            <input type="text" class="form-control" name="method">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">Réf. échantillon</label>
+            <input type="text" class="form-control" name="sample_reference">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">Val. assignée (X)</label>
+            <input type="number" step="any" class="form-control" name="target_value">
+            <span class="form-text">Essais quantitatifs</span>
+        </div>
+        <div class="col-md-1">
+            <label class="form-label small">Sigma</label>
+            <input type="number" step="any" class="form-control" name="target_sd">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">Résultat attendu</label>
+            <input type="text" class="form-control" name="expected_qualitative_result" placeholder="ex: Conforme">
+            <span class="form-text">Essais qualitatifs / solidité</span>
+        </div>
+        <div class="col-md-1">
+            <button type="submit" class="btn btn-primary w-100"><i class="bi bi-plus-lg"></i></button>
+        </div>
+    </form>
+</div>
+
+<div class="card card-kpi p-3 mb-3">
+    <table class="table table-sm">
+        <thead><tr><th>Nom</th><th>Type</th><th>Paramètre</th><th>Unité</th><th>Méthode</th><th>Val. assignée / Résultat attendu</th><th>Sigma</th><th></th></tr></thead>
+        <tbody>
+        {% for t in data.get('trials', []) %}
+            <tr>
+                <td>{{ t.name }}</td>
+                <td><span class="badge bg-secondary">{{ {'quantitative':'Quantitatif','qualitative':'Qualitatif','solidite':'Solidité'}.get(t.trial_type, t.trial_type) }}</span></td>
+                <td>{{ t.parameter }}</td><td>{{ t.unit }}</td>
+                <td>{{ t.method }}</td>
+                <td>{{ t.target_value if t.trial_type == 'quantitative' else t.expected_qualitative_result }}</td>
+                <td>{{ t.target_sd }}</td>
+                <td>
+                    <form method="POST">
+                        <input type="hidden" name="action" value="remove_trial">
+                        <input type="hidden" name="index" value="{{ loop.index0 }}">
+                        <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                    </form>
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="8" class="text-center text-muted">Aucun essai ajouté pour le moment.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<form method="POST">
+    <input type="hidden" name="action" value="next">
+    <a href="{{ url_for('wizard.step1') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Précédent</a>
+    <button type="submit" class="btn btn-primary">Suivant <i class="bi bi-arrow-right"></i></button>
+</form>
+{% endblock %}

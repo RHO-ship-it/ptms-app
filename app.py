@@ -16,6 +16,9 @@ def create_app(config_class=Config):
     db.init_app(app)
     login_manager.init_app(app)
 
+    with app.app_context():
+        db.create_all()
+
     from models import User
 
     @login_manager.user_loader
@@ -35,6 +38,7 @@ def create_app(config_class=Config):
     from blueprints.admin import admin_bp
     from blueprints.traitement import traitement_bp
     from blueprints.homogeneity import homogeneity_bp
+    from blueprints.commercial import commercial_bp
 
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(dashboard_bp, url_prefix="/")
@@ -48,6 +52,15 @@ def create_app(config_class=Config):
     app.register_blueprint(admin_bp, url_prefix="/admin")
     app.register_blueprint(traitement_bp, url_prefix="/traitement")
     app.register_blueprint(homogeneity_bp, url_prefix="/homogeneity")
+    app.register_blueprint(commercial_bp, url_prefix="/commercial")
+
+    @app.cli.command("send-reminders")
+    def send_reminders_cli():
+        """Commande CLI pour envoyer les relances automatiques de deadline par e-mail."""
+        from utils import send_deadline_reminders
+        res = send_deadline_reminders(days_threshold=5)
+        print(f"Rappels envoyés: {res['reminders_sent']} notifications à {res['labs_count']} laboratoire(s).")
+
 
     @app.context_processor
     def inject_globals():

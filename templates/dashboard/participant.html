@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}Mon Espace{% endblock %}
+
+{% block extra_style %}
+.ptms-participant-banner {
+    background: linear-gradient(135deg, #1E293B 0%, #0A4FA6 60%, #00B4D8 100%);
+    border-radius: 18px;
+    padding: 28px 32px;
+    color: white;
+    margin-bottom: 28px;
+    position: relative;
+    overflow: hidden;
+}
+.ptms-participant-banner::before {
+    content: ''; position: absolute;
+    top: -50px; right: -50px;
+    width: 220px; height: 220px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.05);
+}
+.ptms-notif-card {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 12px 0; border-bottom: 1px solid #F1F5F9;
+}
+.ptms-notif-card:last-child { border-bottom: none; }
+.ptms-notif-icon {
+    width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size:14px;
+}
+.ptms-kpi-mini {
+    background: var(--ptms-card);
+    border-radius: var(--ptms-radius);
+    border: 1px solid var(--ptms-border);
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: all var(--ptms-transition);
+}
+.ptms-kpi-mini:hover { transform: translateY(-2px); box-shadow: var(--ptms-shadow-md); }
+.ptms-kpi-mini-icon {
+    width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size:18px;
+}
+.ptms-kpi-mini-val { font-size: 24px; font-weight: 800; line-height: 1; }
+.ptms-kpi-mini-label { font-size: 12px; color: var(--ptms-muted); font-weight: 500; }
+{% endblock %}
+
+{% block content %}
+
+<!-- Banner -->
+<div class="ptms-participant-banner">
+    <div class="row align-items-center">
+        <div class="col">
+            <div style="font-size:21px; font-weight:800;">
+                Bienvenue, {{ current_user.full_name.split()[0] if current_user.full_name else 'Participant' }} 👋
+            </div>
+            <div style="font-size:13px; opacity:.75; margin-top:4px;">Espace participant — Essais d'aptitude inter-laboratoires</div>
+            <div style="margin-top:14px;">
+                <a href="{{ url_for('participants.portal') }}" class="ptms-btn" style="background:white; color:#0A4FA6; font-size:13px; margin-right:8px;">
+                    <i class="bi bi-inbox-fill"></i> Mes formulaires
+                </a>
+                <a href="{{ url_for('participants.my_contact_info') }}" class="ptms-btn" style="background:rgba(255,255,255,.15); color:white; border:1px solid rgba(255,255,255,.25); font-size:13px;">
+                    <i class="bi bi-person-lines-fill"></i> Mes coordonnées
+                </a>
+            </div>
+        </div>
+        <div class="col-auto d-none d-md-block" style="opacity:.25;">
+            <i class="bi bi-flask" style="font-size:72px;"></i>
+        </div>
+    </div>
+</div>
+
+<!-- KPI Mini Row -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md">
+        <div class="ptms-kpi-mini">
+            <div class="ptms-kpi-mini-icon" style="background:#FEF3C7; color:#F59E0B;">
+                <i class="bi bi-hourglass-split"></i>
+            </div>
+            <div>
+                <div class="ptms-kpi-mini-val" style="color:#F59E0B;">{{ kpis.nb_pending }}</div>
+                <div class="ptms-kpi-mini-label">À soumettre</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="ptms-kpi-mini">
+            <div class="ptms-kpi-mini-icon" style="background:#FEE2E2; color:#EF4444;">
+                <i class="bi bi-clock-history"></i>
+            </div>
+            <div>
+                <div class="ptms-kpi-mini-val" style="color:#EF4444;">{{ kpis.nb_late }}</div>
+                <div class="ptms-kpi-mini-label">En retard</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="ptms-kpi-mini">
+            <div class="ptms-kpi-mini-icon" style="background:#EDE9FE; color:#6366F1;">
+                <i class="bi bi-send-fill"></i>
+            </div>
+            <div>
+                <div class="ptms-kpi-mini-val" style="color:#6366F1;">{{ kpis.nb_submitted }}</div>
+                <div class="ptms-kpi-mini-label">Soumis</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="ptms-kpi-mini">
+            <div class="ptms-kpi-mini-icon" style="background:#D1FAE5; color:#10B981;">
+                <i class="bi bi-patch-check-fill"></i>
+            </div>
+            <div>
+                <div class="ptms-kpi-mini-val" style="color:#10B981;">{{ kpis.nb_validated }}</div>
+                <div class="ptms-kpi-mini-label">Validés</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md">
+        <div class="ptms-kpi-mini">
+            <div class="ptms-kpi-mini-icon" style="background:#FEE2E2; color:#DC2626;">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+            </div>
+            <div>
+                <div class="ptms-kpi-mini-val" style="color:#DC2626;">{{ kpis.nb_anomaly }}</div>
+                <div class="ptms-kpi-mini-label">Anomalies</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main row -->
+<div class="row g-4">
+
+    <!-- Action panel -->
+    <div class="col-lg-7">
+        <div class="ptms-card h-100">
+            <div class="ptms-card-header">
+                <i class="bi bi-lightning-charge-fill text-warning" style="font-size:17px;"></i>
+                <span class="ptms-card-title">Actions disponibles</span>
+            </div>
+            <div class="ptms-card-body">
+                <div class="d-grid gap-3">
+                    <!-- Main submit action -->
+                    <a href="{{ url_for('participants.portal') }}" class="ptms-btn ptms-btn-primary" style="padding:14px 20px; font-size:14.5px; justify-content:center;">
+                        <i class="bi bi-inbox-fill"></i> Accéder à mes formulaires à soumettre
+                        {% if kpis.nb_pending > 0 %}
+                        <span class="ms-auto" style="background:rgba(255,255,255,.25); border-radius:12px; padding:1px 8px; font-size:12px;">{{ kpis.nb_pending }} en attente</span>
+                        {% endif %}
+                    </a>
+
+                    {% if kpis.nb_anomaly > 0 %}
+                    <div class="ptms-alert ptms-alert-danger">
+                        <i class="bi bi-exclamation-circle-fill ptms-alert-icon"></i>
+                        <div>
+                            <strong>{{ kpis.nb_anomaly }} anomalie(s) détectée(s)</strong> sur vos soumissions.
+                            Veuillez contacter le coordinateur d'essai.
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if kpis.nb_late > 0 %}
+                    <div class="ptms-alert ptms-alert-warning">
+                        <i class="bi bi-clock-history ptms-alert-icon"></i>
+                        <div>
+                            <strong>{{ kpis.nb_late }} formulaire(s) en retard</strong>. Veuillez soumettre vos résultats dès que possible.
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <a href="{{ url_for('participants.my_contact_info') }}" class="ptms-btn ptms-btn-ghost" style="justify-content:center;">
+                        <i class="bi bi-person-lines-fill"></i> Mettre à jour mes coordonnées
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notifications -->
+    <div class="col-lg-5">
+        <div class="ptms-card h-100">
+            <div class="ptms-card-header">
+                <i class="bi bi-bell-fill text-primary" style="font-size:17px;"></i>
+                <span class="ptms-card-title">Notifications récentes</span>
+                {% if notifications %}
+                <span class="ptms-badge ptms-badge-primary">{{ notifications|length }}</span>
+                {% endif %}
+            </div>
+            <div class="ptms-card-body" style="max-height:380px; overflow-y:auto;">
+                {% for n in notifications %}
+                <div class="ptms-notif-card">
+                    <div class="ptms-notif-icon" style="background:#E8F0FB; color:#0A4FA6;">
+                        <i class="bi bi-bell"></i>
+                    </div>
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-size:13px; font-weight:500; color:var(--ptms-dark);">{{ n.message }}</div>
+                        <div style="font-size:11px; color:var(--ptms-muted); margin-top:3px;">
+                            <i class="bi bi-clock me-1"></i>{{ n.created_at.strftime('%d/%m/%Y à %H:%M') }}
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-center py-4 text-muted">
+                    <i class="bi bi-bell-slash" style="font-size:36px; display:block; opacity:.3; margin-bottom:10px;"></i>
+                    Aucune notification récente.
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

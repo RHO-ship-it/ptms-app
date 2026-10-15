@@ -86,6 +86,22 @@ def delete_user(user_id):
     return redirect(url_for("admin.list_users"))
 
 
+@admin_bp.route("/users/<int:user_id>/reset-password", methods=["POST"])
+@login_required
+@roles_required("admin")
+def reset_password(user_id):
+    import random
+    import string
+    user = User.query.get_or_404(user_id)
+    chars = string.ascii_letters + string.digits
+    temp_password = "".join(random.choice(chars) for _ in range(10))
+    user.set_password(temp_password)
+    db.session.commit()
+    log_action("update", "User", user_id, f"Réinitialisation mot de passe pour {user.username}")
+    flash(f"Mot de passe réinitialisé. Le nouveau mot de passe temporaire pour {user.username} est : {temp_password}", "success")
+    return redirect(url_for("admin.list_users"))
+
+
 @admin_bp.route("/audit-trail")
 @login_required
 @roles_required("admin", "auditeur")

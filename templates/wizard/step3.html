@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Wizard - Étape 3{% endblock %}
+{% block content %}
+{% include "wizard/_progress.html" %}
+<h4 class="mb-3">Étape 3 / 5 — Sélection des laboratoires participants</h4>
+
+<div class="card card-kpi p-4">
+    <form method="POST">
+        <div class="row g-2 mb-3">
+        {% for lab in labs %}
+            <div class="col-md-4">
+                <div class="form-check border rounded p-2">
+                    <input class="form-check-input" type="checkbox" name="laboratory_ids" value="{{ lab.id }}"
+                           id="lab{{ lab.id }}" {{ 'checked' if lab.id|string in data.get('laboratory_ids', []) }}>
+                    <label class="form-check-label" for="lab{{ lab.id }}">
+                        <strong>{{ lab.code }}</strong><br><span class="small text-muted">{{ lab.name }}</span>
+                    </label>
+                </div>
+            </div>
+        {% else %}
+            <p class="text-muted">Aucun laboratoire disponible. Créez-en d'abord un dans le module Laboratoires.</p>
+        {% endfor %}
+        </div>
+        <a href="{{ url_for('wizard.step2') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Précédent</a>
+        <button type="submit" class="btn btn-primary">Suivant <i class="bi bi-arrow-right"></i></button>
+    </form>
+</div>
+{% endblock %}

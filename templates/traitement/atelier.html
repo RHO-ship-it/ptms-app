@@ -1,0 +1,1145 @@
+{% extends "base.html" %}
+{% block title %}Atelier Statistique — {{ selected_trial.name if selected_trial else 'Sélection' }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+  <!-- ── Header ────────────────────────────────────────────────────────── -->
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h1 class="h3 fw-bold mb-1">
+        <i class="bi bi-bar-chart-line-fill text-primary me-2"></i>Atelier de Traitement Statistique
+      </h1>
+      <p class="text-muted mb-0">Analyse conforme ISO 13528 / ISO/IEC 17043 — Procédure TTS</p>
+    </div>
+    <a href="{{ url_for('traitement.dashboard') }}{% if selected_trial %}?campaign_id={{ selected_trial.campaign_id }}{% endif %}"
+       class="btn btn-outline-primary">
+      <i class="bi bi-grid-3x3-gap-fill me-1"></i>Dashboard Récapitulatif
+    </a>
+  </div>
+
+  <!-- ── Sélection de l'essai ──────────────────────────────────────────── -->
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-body py-3">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-5">
+          <label class="form-label fw-semibold small text-muted mb-1">
+            <i class="bi bi-diagram-3 me-1"></i>Campagne & Essai
+          </label>
+          <select name="trial_id" class="form-select" onchange="this.form.submit()">
+            <option value="">-- Sélectionner un essai --</option>
+            {% for c in campaigns %}
+              <optgroup label="{{ c.reference }} — {{ c.name }}">
+                {% for t in c.trials %}
+                  <option value="{{ t.id }}" {% if selected_trial and t.id == selected_trial.id %}selected{% endif %}>
+                    {{ t.name }}{% if t.parameter %} ({{ t.parameter }}){% endif %} — {{ t.type_label() }}
+                  </option>
+                {% endfor %}
+              </optgroup>
+            {% endfor %}
+          </select>
+        </div>
+        {% if selected_trial %}
+        <div class="col-auto">
+          <span class="badge rounded-pill fs-6 px-3 py-2
+            {% if selected_trial.trial_type == 'quantitative' %}bg-primary
+            {% elif selected_trial.trial_type == 'qualitative' %}bg-success
+            {% else %}bg-warning text-dark{% endif %}">
+            <i class="bi bi-{% if selected_trial.trial_type == 'quantitative' %}calculator{% elif selected_trial.trial_type == 'qualitative' %}check2-circle{% else %}palette{% endif %} me-1"></i>
+            {{ selected_trial.type_label() }}
+          </span>
+        </div>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  {% if selected_trial %}
+  <!-- ── Info essai ─────────────────────────────────────────────────────── -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm h-100 text-center">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-primary">{{ stats.count }}</div>
+          <div class="small text-muted">Participants</div>
+          {% if stats.below_min is defined and stats.below_min %}
+          <span class="badge bg-warning text-dark mt-1">< {{ stats.min_participants }} min</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if selected_trial.trial_type == 'quantitative' %}
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm h-100 text-center">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-success">{{ stats.target_val | round(4) if stats.target_val else '—' }}</div>
+          <div class="small text-muted">Valeur assignée (x<sub>pt</sub>)</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm h-100 text-center">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-info">{{ stats.target_sd | round(4) if stats.target_sd else '—' }}</div>
+          <div class="small text-muted">σ<sub>pt</sub></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm h-100 text-center">
+        <div class="card-body py-3">
+          {% set sat = participant_results | selectattr('z_badge','eq','success') | list | length %}
+          {% set total = participant_results | length %}
+          <div class="display-6 fw-bold {% if sat == total %}text-success{% elif sat >= total*0.7 %}text-warning{% else %}text-danger{% endif %}">
+            {{ ((sat / total * 100) | round(0) | int) if total > 0 else 0 }}%
+          </div>
+          <div class="small text-muted">Taux de conformité</div>
+        </div>
+      </div>
+    </div>
+
+    {% elif selected_trial.trial_type == 'qualitative' %}
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm h-100 text-center">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-success">{{ stats.consensus or '—' }}</div>
+          <div class="small text-muted">Résultat Consensus</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm h-100 text-center">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold {% if stats.agreement_rate >= 80 %}text-success{% elif stats.agreement_rate >= 60 %}text-warning{% else %}text-danger{% endif %}">{{ stats.agreement_rate }}%</div>
+          <div class="small text-muted">Taux d'accord</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm h-100 text-center">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold {% if stats.kappa and stats.kappa.kappa >= 0.6 %}text-success{% elif stats.kappa and stats.kappa.kappa >= 0.4 %}text-warning{% else %}text-danger{% endif %}">
+            {{ stats.kappa.kappa if stats.kappa and stats.kappa.kappa is not none else '—' }}
+          </div>
+          <div class="small text-muted">κ de Cohen</div>
+          {% if stats.kappa %}<span class="badge bg-{{ stats.kappa.badge }} mt-1 small">{{ stats.kappa.interpretation }}</span>{% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% else %}{# solidite #}
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm h-100 text-center">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-warning">9</div>
+          <div class="small text-muted">Paramètres analysés</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm h-100 text-center">
+        <div class="card-body py-3">
+          {% set nd = participant_results | rejectattr('is_deviant','equalto',true) | list | length %}
+          {% set total = participant_results | length %}
+          <div class="display-6 fw-bold text-success">{{ nd }}</div>
+          <div class="small text-muted">Labs conformes / {{ total }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm h-100 text-center">
+        <div class="card-body py-3">
+          {% set nd = participant_results | rejectattr('is_deviant','equalto',true) | list | length %}
+          {% set total = participant_results | length %}
+          <div class="display-6 fw-bold {% if nd == total %}text-success{% else %}text-warning{% endif %}">
+            {{ ((nd / total * 100) | round(0) | int) if total > 0 else 0 }}%
+          </div>
+          <div class="small text-muted">Conformité globale</div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Onglets principaux ─────────────────────────────────────────────── -->
+  <ul class="nav nav-pills mb-4 gap-2 flex-wrap" id="atelierTabs" role="tablist">
+    {% if selected_trial.trial_type == 'quantitative' %}
+    <li class="nav-item">
+      <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tab-estimateurs">
+        <i class="bi bi-calculator me-1"></i>Estimateurs
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-normalite">
+        <i class="bi bi-graph-up me-1"></i>Tests de Normalité
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-aberrants">
+        <i class="bi bi-exclamation-triangle me-1"></i>Valeurs Aberrantes
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-performance">
+        <i class="bi bi-award me-1"></i>Performance
+      </button>
+    </li>
+    {% elif selected_trial.trial_type == 'qualitative' %}
+    <li class="nav-item">
+      <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tab-qual-consensus">
+        <i class="bi bi-check2-all me-1"></i>Consensus & Accord
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-qual-conformite">
+        <i class="bi bi-table me-1"></i>Conformité / Participants
+      </button>
+    </li>
+    {% else %}
+    <li class="nav-item">
+      <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tab-sol-heatmap">
+        <i class="bi bi-grid-3x3 me-1"></i>Heatmap Solidité
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-sol-radar">
+        <i class="bi bi-hexagon me-1"></i>Radar & Stats
+      </button>
+    </li>
+    {% endif %}
+    <li class="nav-item">
+      <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-outils">
+        <i class="bi bi-wrench me-1"></i>Outils Utilisés
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content">
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- ONGLET : ESTIMATEURS QUANTITATIFS                                 -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    {% if selected_trial.trial_type == 'quantitative' %}
+    <div class="tab-pane fade show active" id="tab-estimateurs">
+      <!-- Méthode retenue -->
+      <div class="alert alert-primary border-0 mb-4">
+        <i class="bi bi-info-circle me-2"></i>
+        <strong>Méthode retenue :</strong> {{ selected_trial.sigma_pt_method_label() }}
+        {% if selected_trial.sigma_pt_traceability %}— {{ selected_trial.sigma_pt_traceability }}{% endif %}
+        {% if stats.z_prime_recommended %}
+        <span class="badge bg-warning text-dark ms-2">z'-score recommandé</span>
+        {% endif %}
+      </div>
+
+      <div class="row g-4">
+        <!-- Algorithme A -->
+        <div class="col-md-6">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-primary text-white py-2">
+              <i class="bi bi-sliders me-2"></i><strong>Algorithme A</strong>
+              <span class="float-end small opacity-75">ISO 13528 §C.3.1</span>
+            </div>
+            <div class="card-body">
+              {% if stats.alg_a %}
+              {% if stats.alg_a.high_outliers_warning %}
+              <div class="alert alert-warning py-2 small">⚠️ Taux d'aberrants > 20% — Médiane recommandée</div>
+              {% endif %}
+              <table class="table table-sm table-borderless mb-0">
+                <tr><td class="text-muted">x<sub>pt</sub> (robuste)</td><td class="fw-bold">{{ stats.alg_a.x_pt }}</td></tr>
+                <tr><td class="text-muted">σ<sub>pt</sub></td><td class="fw-bold">{{ stats.alg_a.sigma_pt }}</td></tr>
+                <tr><td class="text-muted">u(x<sub>pt</sub>)</td><td>{{ stats.alg_a.u_xpt }}</td></tr>
+                <tr><td class="text-muted">U(x<sub>pt</sub>) k=2</td><td>{{ stats.alg_a.U_xpt }}</td></tr>
+                <tr><td class="text-muted">MADe initial</td><td>{{ stats.alg_a.made }}</td></tr>
+                <tr><td class="text-muted">Itérations</td><td>{{ stats.alg_a.iterations }}</td></tr>
+              </table>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Médiane / MADe -->
+        <div class="col-md-6">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-info text-white py-2">
+              <i class="bi bi-distribute-horizontal me-2"></i><strong>Médiane / MADe / nIQR</strong>
+              <span class="float-end small opacity-75">TTS §5.1.3.2</span>
+            </div>
+            <div class="card-body">
+              {% if stats.med_stats %}
+              <table class="table table-sm table-borderless mb-0">
+                <tr><td class="text-muted">Médiane</td><td class="fw-bold">{{ stats.med_stats.median }}</td></tr>
+                <tr><td class="text-muted">MADe</td><td class="fw-bold">{{ stats.med_stats.made }}</td></tr>
+                <tr><td class="text-muted">nIQR</td><td>{{ stats.med_stats.niqr }}</td></tr>
+                <tr><td class="text-muted">σ<sub>pt</sub> retenu</td><td>{{ stats.med_stats.sigma_pt }}</td></tr>
+                <tr><td class="text-muted">u(x<sub>pt</sub>)</td><td>{{ stats.med_stats.u_xpt }}</td></tr>
+              </table>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- M-Estimateur -->
+        <div class="col-md-6">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-secondary text-white py-2">
+              <i class="bi bi-bezier me-2"></i><strong>M-Estimateur Logistique</strong>
+              <span class="float-end small opacity-75">TTS §5.1.3.2</span>
+            </div>
+            <div class="card-body">
+              {% if stats.m_est %}
+              <table class="table table-sm table-borderless mb-0">
+                <tr><td class="text-muted">μ̂ (robuste)</td><td class="fw-bold">{{ stats.m_est.mu_hat }}</td></tr>
+                <tr><td class="text-muted">S (échelle)</td><td>{{ stats.m_est.S }}</td></tr>
+                <tr><td class="text-muted">σ robuste</td><td class="fw-bold">{{ stats.m_est.sigma_robuste }}</td></tr>
+                <tr><td class="text-muted">Itérations</td><td>{{ stats.m_est.iterations }}</td></tr>
+              </table>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats Classiques -->
+        <div class="col-md-6">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-dark text-white py-2">
+              <i class="bi bi-bar-chart me-2"></i><strong>Statistiques Classiques</strong>
+            </div>
+            <div class="card-body">
+              {% if stats.class_st %}
+              <table class="table table-sm table-borderless mb-0">
+                <tr><td class="text-muted">Moyenne</td><td class="fw-bold">{{ stats.class_st.mean }}</td></tr>
+                <tr><td class="text-muted">Écart-type (s)</td><td class="fw-bold">{{ stats.class_st.sd }}</td></tr>
+                <tr><td class="text-muted">u(x)</td><td>{{ stats.class_st.u_xpt }}</td></tr>
+                <tr><td class="text-muted">U(x) k=2</td><td>{{ stats.class_st.U_xpt }}</td></tr>
+              </table>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Appliquer méthode -->
+      <div class="card border-0 shadow-sm mt-4">
+        <div class="card-header bg-success text-white py-2">
+          <i class="bi bi-check2-circle me-2"></i>Valider les Estimateurs pour cet Essai
+        </div>
+        <div class="card-body">
+          <form method="post" action="{{ url_for('traitement.apply_stats', trial_id=selected_trial.id) }}" class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Méthode retenue</label>
+              <select name="method_choice" class="form-select">
+                <option value="algorithm_a">Algorithme A (ISO 13528)</option>
+                <option value="median_made">Médiane / MADe</option>
+                <option value="m_estimator">M-Estimateur Logistique</option>
+                <option value="classical">Statistiques classiques</option>
+                <option value="manual">Valeurs manuelles</option>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small fw-semibold">x<sub>pt</sub></label>
+              <input type="number" step="any" name="target_value" class="form-control" value="{{ stats.target_val }}" placeholder="Valeur assignée">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small fw-semibold">σ<sub>pt</sub></label>
+              <input type="number" step="any" name="target_sd" class="form-control" value="{{ stats.target_sd }}" placeholder="Écart-type">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small fw-semibold">u(x<sub>pt</sub>)</label>
+              <input type="number" step="any" name="reference_uncertainty" class="form-control" value="{{ stats.ref_unc }}" placeholder="Incertitude">
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+              <button type="submit" class="btn btn-success w-100">
+                <i class="bi bi-floppy me-1"></i>Enregistrer
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- ONGLET : TESTS DE NORMALITÉ                                       -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="tab-pane fade" id="tab-normalite">
+      <div class="row g-4">
+        <!-- Droite d'Henry -->
+        <div class="col-md-6">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-primary text-white py-2">
+              <i class="bi bi-graph-up-arrow me-2"></i><strong>Droite d'Henry</strong>
+              <span class="float-end small opacity-75">TTS §A1.1</span>
+            </div>
+            <div class="card-body">
+              {% if stats.henry and stats.henry.r_squared is not none %}
+              <div class="mb-3">
+                <span class="badge bg-{{ 'success' if stats.henry.normal_conform else 'warning' }} fs-6">
+                  {% if stats.henry.normal_conform %}✓ Distribution normale (R² = {{ stats.henry.r_squared }})
+                  {% else %}⚠ Distribution non normale (R² = {{ stats.henry.r_squared }}){% endif %}
+                </span>
+              </div>
+              <canvas id="henryChart" height="220"></canvas>
+              {% else %}<p class="text-muted">Données insuffisantes (n < 3)</p>{% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- K-S + Kurtosis -->
+        <div class="col-md-6">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-info text-white py-2">
+              <i class="bi bi-activity me-2"></i><strong>Tests de Normalité</strong>
+            </div>
+            <div class="card-body">
+              <!-- Kolmogorov-Smirnov -->
+              <h6 class="fw-semibold">Kolmogorov-Smirnov <small class="text-muted">(TTS §A1.6)</small></h6>
+              {% if stats.ks %}
+              <div class="d-flex gap-3 mb-3">
+                <div class="text-center">
+                  <div class="fw-bold fs-5">{{ stats.ks.d_max }}</div>
+                  <div class="small text-muted">D<sub>max</sub></div>
+                </div>
+                <div class="text-center">
+                  <div class="fw-bold fs-5">{{ stats.ks.d_critical }}</div>
+                  <div class="small text-muted">D<sub>critique</sub> (5%)</div>
+                </div>
+                <div class="text-center">
+                  <span class="badge bg-{{ 'success' if stats.ks.is_normal else 'warning' }} fs-6 mt-1">
+                    {{ '✓ Normale' if stats.ks.is_normal else '⚠ Non Normale' }}
+                  </span>
+                </div>
+              </div>
+              {% endif %}
+
+              <hr>
+              <!-- Kurtosis / Skewness -->
+              <h6 class="fw-semibold">Kurtosis & Asymétrie <small class="text-muted">(TTS §A1.7-A1.8)</small></h6>
+              {% if stats.kurt_skew %}
+              <table class="table table-sm table-borderless">
+                <tr>
+                  <td class="text-muted">Kurtosis (K)</td>
+                  <td><strong>{{ stats.kurt_skew.kurtosis }}</strong></td>
+                  <td><span class="badge bg-secondary">{{ stats.kurt_skew.kurtosis_type }}</span></td>
+                </tr>
+                <tr>
+                  <td class="text-muted">Asymétrie (g1)</td>
+                  <td><strong>{{ stats.kurt_skew.skewness }}</strong></td>
+                  <td><span class="badge bg-secondary">{{ stats.kurt_skew.skewness_type }}</span></td>
+                </tr>
+              </table>
+              {% endif %}
+
+              <!-- KDE Chart -->
+              {% if stats.kde %}
+              <h6 class="fw-semibold mt-2">Densité de probabilité (KDE) <small class="text-muted">TTS §A1.3</small></h6>
+              <canvas id="kdeChart" height="160"></canvas>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- ONGLET : VALEURS ABERRANTES                                       -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="tab-pane fade" id="tab-aberrants">
+      <div class="row g-4">
+        <div class="col-md-6">
+          <div class="card border-0 shadow-sm">
+            <div class="card-header bg-danger text-white py-2">
+              <i class="bi bi-exclamation-triangle me-2"></i><strong>Test de Grubbs</strong>
+              <span class="float-end small opacity-75">TTS §A1.4</span>
+            </div>
+            <div class="card-body">
+              {% if stats.grubbs and stats.grubbs.G is not none %}
+              <div class="mb-3">
+                <span class="badge fs-6 bg-{{ 'danger' if 'aberrante' in stats.grubbs.status else ('warning' if 'isolée' in stats.grubbs.status else 'success') }}">
+                  {{ stats.grubbs.status }}
+                </span>
+              </div>
+              <table class="table table-sm table-borderless">
+                <tr><td class="text-muted">G calculé</td><td class="fw-bold">{{ stats.grubbs.G }}</td></tr>
+                <tr><td class="text-muted">G critique 5%</td><td>{{ stats.grubbs.G_critical_5 }}</td></tr>
+                <tr><td class="text-muted">G critique 1%</td><td>{{ stats.grubbs.G_critical_1 }}</td></tr>
+                {% if stats.grubbs.outlier_value is not none %}
+                <tr class="table-danger">
+                  <td class="text-muted">Valeur suspecte</td>
+                  <td class="fw-bold">{{ stats.grubbs.outlier_value }}</td>
+                </tr>
+                {% endif %}
+              </table>
+              {% if stats.grubbs.double_grubbs %}
+              <h6 class="mt-3 fw-semibold">Grubbs Double</h6>
+              <table class="table table-sm table-borderless">
+                <tr><td class="text-muted">G (2 max)</td><td>{{ stats.grubbs.double_grubbs.G_top }}</td></tr>
+                <tr><td class="text-muted">G (2 min)</td><td>{{ stats.grubbs.double_grubbs.G_bot }}</td></tr>
+                <tr><td class="text-muted">Statut</td><td>
+                  {% if stats.grubbs.double_grubbs.status %}
+                  <span class="badge bg-warning">{{ stats.grubbs.double_grubbs.status }}</span>
+                  {% else %}<span class="badge bg-success">Correct</span>{% endif %}
+                </td></tr>
+              </table>
+              {% endif %}
+              {% else %}
+              <p class="text-muted">Données insuffisantes (n < 3)</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <!-- Boxplot SVG -->
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-warning text-dark py-2">
+              <i class="bi bi-box me-2"></i><strong>Boîte à Moustaches</strong>
+              <span class="float-end small opacity-75 text-dark">TTS §A1.2</span>
+            </div>
+            <div class="card-body">
+              {% if stats.boxplot and stats.boxplot.q1 is not none %}
+              <canvas id="boxplotChart" height="200"></canvas>
+              <table class="table table-sm table-borderless mt-3">
+                <tr><td class="text-muted">Q1</td><td>{{ stats.boxplot.q1 }}</td>
+                    <td class="text-muted">Q3</td><td>{{ stats.boxplot.q3 }}</td></tr>
+                <tr><td class="text-muted">Médiane</td><td class="fw-bold">{{ stats.boxplot.median }}</td>
+                    <td class="text-muted">IQR</td><td>{{ stats.boxplot.iqr }}</td></tr>
+                <tr><td class="text-muted">Moustache inf.</td><td>{{ stats.boxplot.lower_fence }}</td>
+                    <td class="text-muted">Moustache sup.</td><td>{{ stats.boxplot.upper_fence }}</td></tr>
+              </table>
+              {% if stats.boxplot.outliers %}
+              <div class="alert alert-warning py-2">
+                ⚠ <strong>{{ stats.boxplot.outliers | length }}</strong> valeur(s) hors moustaches :
+                {{ stats.boxplot.outliers | join(', ') }}
+              </div>
+              {% endif %}
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Statistique h de Mandel -->
+        {% if stats.mandel and stats.mandel.results %}
+        <div class="col-12">
+          <div class="card border-0 shadow-sm">
+            <div class="card-header bg-dark text-white py-2">
+              <i class="bi bi-bar-chart-steps me-2"></i><strong>Statistique h de Mandel</strong>
+              <span class="float-end small opacity-75">ISO 5725-2</span>
+            </div>
+            <div class="card-body">
+              <p class="text-muted small mb-3">Détecte les laboratoires avec biais systématique. |h| > {{ stats.mandel.h_critical }} → biais significatif.</p>
+              <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Laboratoire</th><th>Valeur</th>
+                      <th>h de Mandel</th><th>h critique (5%)</th><th>Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for r in stats.mandel.results %}
+                    <tr class="{{ 'table-danger' if r.significant else '' }}">
+                      <td class="fw-bold">{{ r.lab_code }}</td>
+                      <td>{{ r.value }}</td>
+                      <td>
+                        <div class="d-flex align-items-center gap-2">
+                          <div class="progress flex-grow-1" style="height:8px;">
+                            <div class="progress-bar bg-{{ 'danger' if r.significant else 'info' }}"
+                                 style="width:{{ [([r.h | abs, stats.mandel.h_critical] | max), 0] | max / (stats.mandel.h_critical * 2) * 100 | round | int }}%"></div>
+                          </div>
+                          <span class="fw-bold {{ 'text-danger' if r.significant else '' }}">{{ r.h }}</span>
+                        </div>
+                      </td>
+                      <td>{{ stats.mandel.h_critical }}</td>
+                      <td>
+                        {% if r.significant %}
+                        <span class="badge bg-danger">Biais significatif ⚠</span>
+                        {% else %}
+                        <span class="badge bg-success">Correct ✓</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- ONGLET : PERFORMANCE PARTICIPANTS (QUANTITATIF)                   -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="tab-pane fade" id="tab-performance">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th>Laboratoire</th>
+              <th>Résultat</th>
+              <th>Réplicat 2</th>
+              <th>Incertitude U(x)</th>
+              <th>z-score</th>
+              <th>Interprétation</th>
+              <th>En</th>
+              <th class="text-center">Grubbs</th>
+              <th>IFR</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in participant_results %}
+            <tr class="{{ 'table-warning' if p.z_badge == 'warning' else ('table-danger' if p.z_badge == 'danger' else '') }}">
+              <td>
+                <div class="fw-bold">{{ p.lab_code }}</div>
+                <div class="small text-muted">{{ p.lab_name }}</div>
+              </td>
+              <td class="fw-bold">{{ p.value }}</td>
+              <td>{{ p.replicate_2 or '—' }}</td>
+              <td>{{ p.uncertainty or '—' }}</td>
+              <td>
+                <span class="badge bg-{{ p.z_badge }} fs-6">{{ p.z_score if p.z_score is not none else '—' }}</span>
+              </td>
+              <td><span class="badge bg-{{ p.z_badge }}">{{ p.z_interp }}</span></td>
+              <td>
+                {% if p.en_score is not none %}
+                <span class="badge bg-{{ 'success' if p.en_conform else 'danger' }}">
+                  {{ p.en_score }} {% if p.en_conform %}✓{% else %}✗{% endif %}
+                </span>
+                {% else %}—{% endif %}
+              </td>
+              <td class="text-center">
+                {% if p.grubbs_outlier %}
+                <span class="badge bg-danger">⚠ Aberrant</span>
+                {% else %}
+                <span class="badge bg-success">✓</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if p.ifr and p.ifr.ifr is not none %}
+                <div class="d-flex align-items-center gap-2">
+                  <div class="progress flex-grow-1" style="height:10px;min-width:60px;">
+                    <div class="progress-bar bg-{{ p.ifr.badge }}" style="width:{{ p.ifr.ifr }}%"></div>
+                  </div>
+                  <span class="badge bg-{{ p.ifr.badge }}">{{ p.ifr.ifr }}</span>
+                </div>
+                <div class="small text-muted">{{ p.ifr.label }}</div>
+                {% else %}—{% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" class="text-center text-muted py-4">Aucun résultat soumis</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- ONGLETS QUALITATIFS                                               -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    {% elif selected_trial.trial_type == 'qualitative' %}
+    <div class="tab-pane fade show active" id="tab-qual-consensus">
+      <div class="row g-4">
+        <!-- Donut chart -->
+        <div class="col-md-5">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-success text-white py-2">
+              <i class="bi bi-pie-chart me-2"></i><strong>Distribution des Réponses</strong>
+            </div>
+            <div class="card-body d-flex flex-column align-items-center justify-content-center">
+              <canvas id="qualDonutChart" style="max-height:280px;"></canvas>
+              <div class="mt-3 text-center">
+                <p class="mb-1"><strong>Résultat Consensus :</strong>
+                  <span class="badge bg-success fs-6">{{ stats.consensus or '—' }}</span>
+                </p>
+                <p class="mb-0 text-muted small">Taux d'accord exact : <strong>{{ stats.agreement_rate }}%</strong></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cohen Kappa -->
+        <div class="col-md-7">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-primary text-white py-2">
+              <i class="bi bi-people me-2"></i><strong>Coefficient Kappa de Cohen (κ)</strong>
+              <span class="float-end small opacity-75">ISO 13528 §9.5</span>
+            </div>
+            <div class="card-body">
+              {% if stats.kappa and stats.kappa.kappa is not none %}
+              <div class="text-center mb-4">
+                <div class="display-4 fw-bold text-{{ stats.kappa.badge }}">{{ stats.kappa.kappa }}</div>
+                <span class="badge bg-{{ stats.kappa.badge }} fs-6 mt-2">{{ stats.kappa.interpretation }}</span>
+              </div>
+
+              <!-- Barre de progression -->
+              <div class="mb-3">
+                <div class="d-flex justify-content-between small text-muted mb-1">
+                  <span>Aléatoire (0)</span><span>Parfait (1)</span>
+                </div>
+                <div class="progress" style="height:16px;">
+                  <div class="progress-bar bg-{{ stats.kappa.badge }}" style="width:{{ [stats.kappa.kappa * 100, 0] | max | round | int }}%"></div>
+                </div>
+              </div>
+
+              <table class="table table-sm table-borderless">
+                <tr><td class="text-muted">P<sub>o</sub> (observé)</td><td>{{ stats.kappa.p_observed }}</td></tr>
+                <tr><td class="text-muted">P<sub>e</sub> (attendu par hasard)</td><td>{{ stats.kappa.p_expected }}</td></tr>
+                <tr><td class="text-muted">N participants</td><td>{{ stats.kappa.n }}</td></tr>
+              </table>
+
+              <div class="table-responsive mt-2">
+                <table class="table table-sm table-bordered">
+                  <thead class="table-light"><tr><th>Réponse</th><th>Effectif</th><th>%</th></tr></thead>
+                  <tbody>
+                    {% for cat, cnt in stats.kappa.categories.items() %}
+                    <tr>
+                      <td>{{ cat }}</td>
+                      <td>{{ cnt }}</td>
+                      <td>{{ (cnt / stats.kappa.n * 100) | round(1) }}%</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% else %}
+              <p class="text-muted">Données insuffisantes.</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="tab-qual-conformite">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead class="table-dark">
+            <tr><th>Laboratoire</th><th>Résultat soumis</th><th>Consensus</th><th>Conformité</th><th>Statut validation</th></tr>
+          </thead>
+          <tbody>
+            {% for p in participant_results %}
+            <tr class="{{ 'table-success' if p.conform else 'table-danger' }}">
+              <td>
+                <div class="fw-bold">{{ p.lab_code }}</div>
+                <div class="small text-muted">{{ p.lab_name }}</div>
+              </td>
+              <td class="fw-bold">{{ p.result or '—' }}</td>
+              <td>{{ stats.consensus or '—' }}</td>
+              <td>
+                {% if p.conform is not none %}
+                <span class="badge bg-{{ 'success' if p.conform else 'danger' }} fs-6">
+                  {{ '✓ Conforme' if p.conform else '✗ Non Conforme' }}
+                </span>
+                {% else %}<span class="badge bg-secondary">N/A</span>{% endif %}
+              </td>
+              <td>
+                {% if p.is_valid %}<span class="badge bg-success">Validé</span>
+                {% else %}<span class="badge bg-warning text-dark">En attente</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- ONGLETS SOLIDITÉ                                                  -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    {% else %}
+    <div class="tab-pane fade show active" id="tab-sol-heatmap">
+      {% if stats.matrix %}
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-warning text-dark py-2">
+          <i class="bi bi-grid-3x3 me-2"></i><strong>Heatmap Solidité des Couleurs</strong>
+          <span class="float-end small">Note 1-5 | ≥4 = Conforme | écart ≥2 = Déviant</span>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-bordered table-sm mb-0 text-center align-middle">
+              <thead class="table-dark">
+                <tr>
+                  <th>Laboratoire</th>
+                  {% for p in stats.params %}
+                  <th class="small" style="writing-mode:vertical-rl;min-height:80px;">{{ p.label }}</th>
+                  {% endfor %}
+                  <th>Score<br>Global</th>
+                </tr>
+                <tr class="table-secondary small">
+                  <td class="text-muted">Consensus</td>
+                  {% for p in stats.params %}
+                  {% set ps = stats.param_stats[p.key] %}
+                  <td class="fw-bold">{{ ps.consensus or '—' }}</td>
+                  {% endfor %}
+                  <td>—</td>
+                </tr>
+                <tr class="table-secondary small">
+                  <td class="text-muted">Conform. (%)</td>
+                  {% for p in stats.params %}
+                  {% set ps = stats.param_stats[p.key] %}
+                  <td>
+                    {% if ps.conformity_rate is not none %}
+                    <span class="badge bg-{{ 'success' if ps.conformity_rate >= 80 else ('warning' if ps.conformity_rate >= 50 else 'danger') }}">
+                      {{ ps.conformity_rate }}%
+                    </span>
+                    {% else %}—{% endif %}
+                  </td>
+                  {% endfor %}
+                  <td>—</td>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in stats.matrix %}
+                <tr class="{{ 'table-danger' if row.is_deviant else '' }}">
+                  <td class="text-start fw-bold">{{ row.lab_code }}</td>
+                  {% for p in stats.params %}
+                  {% set param_data = row.params.get(p.key, {}) %}
+                  {% set note = param_data.get('note') %}
+                  {% set deviant = param_data.get('deviant', false) %}
+                  <td class="fw-bold {% if note is not none %}
+                    {% if note >= 4 %}bg-success text-white
+                    {% elif note == 3 %}bg-warning text-dark
+                    {% elif note < 3 %}bg-danger text-white
+                    {% endif %}
+                  {% endif %} {{ 'border border-dark border-3' if deviant else '' }}">
+                    {{ note | int if note is not none else '—' }}
+                    {% if deviant %}<span title="Déviant">⚠</span>{% endif %}
+                  </td>
+                  {% endfor %}
+                  <td>
+                    {% if row.overall_score is not none %}
+                    <span class="badge bg-{{ 'success' if row.overall_score >= 4 else ('warning' if row.overall_score >= 3 else 'danger') }}">
+                      {{ row.overall_score }}
+                    </span>
+                    {% else %}—{% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Légende -->
+      <div class="d-flex gap-3 flex-wrap">
+        <span class="badge bg-success fs-6 px-3">≥ 4 — Bon / Excellent</span>
+        <span class="badge bg-warning text-dark fs-6 px-3">= 3 — Acceptable</span>
+        <span class="badge bg-danger fs-6 px-3">< 3 — Insuffisant</span>
+        <span class="badge bg-secondary fs-6 px-3">⚠ Encadré = Déviant (écart ≥ 2 vs consensus)</span>
+      </div>
+      {% else %}
+      <div class="alert alert-info">Aucune donnée de solidité soumise pour cet essai.</div>
+      {% endif %}
+    </div>
+
+    <div class="tab-pane fade" id="tab-sol-radar">
+      <div class="row g-4">
+        <div class="col-md-6">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-warning text-dark py-2">
+              <i class="bi bi-hexagon me-2"></i><strong>Profil Moyen (Radar)</strong>
+            </div>
+            <div class="card-body d-flex align-items-center justify-content-center">
+              <canvas id="soliditeRadarChart" style="max-height:350px;"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-dark text-white py-2">
+              <i class="bi bi-table me-2"></i><strong>Stats par Paramètre</strong>
+            </div>
+            <div class="card-body">
+              <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                  <thead class="table-light">
+                    <tr><th>Paramètre</th><th>Consensus</th><th>Moyenne</th><th>Écart-type</th><th>Conform.</th></tr>
+                  </thead>
+                  <tbody>
+                    {% for p in stats.params %}
+                    {% set ps = stats.param_stats[p.key] %}
+                    <tr>
+                      <td class="fw-semibold small">{{ ps.label }}</td>
+<td><span class="badge bg-{{ 'success' if ps.consensus is not none and ps.consensus >= 4 else ('warning' if ps.consensus is not none and ps.consensus == 3 else 'secondary') }}">{{ ps.consensus or '—' }}</span></td>
+                      <td>{{ ps.mean or '—' }}</td>
+                      <td>{{ ps.sd or '—' }}</td>
+                      <td>
+                        {% if ps.conformity_rate is not none %}
+                        <div class="progress" style="height:8px;min-width:60px;">
+                          <div class="progress-bar bg-{{ 'success' if ps.conformity_rate >= 80 else 'warning' }}" style="width:{{ ps.conformity_rate }}%"></div>
+                        </div>
+                        <small>{{ ps.conformity_rate }}%</small>
+                        {% else %}—{% endif %}
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- ONGLET : OUTILS STATISTIQUES UTILISÉS                            -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <div class="tab-pane fade" id="tab-outils">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header py-2">
+          <i class="bi bi-wrench me-2"></i><strong>Récapitulatif des Outils Statistiques Utilisés</strong>
+          <span class="badge bg-primary ms-2">{{ tools_summary | length }} outil(s)</span>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-dark">
+                <tr>
+                  <th style="width:5%">#</th>
+                  <th style="width:20%">Outil Statistique</th>
+                  <th style="width:20%">Référence Normative</th>
+                  <th style="width:30%">Description</th>
+                  <th style="width:25%">Résultat / Conclusion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for t in tools_summary %}
+                <tr>
+                  <td class="text-muted small">{{ loop.index }}</td>
+                  <td>
+                    <span class="badge bg-{{ t.status }} me-1">●</span>
+                    <strong>{{ t.outil }}</strong>
+                    {% if t.warning is defined and t.warning %}
+                    <br><small class="text-warning">⚠ {{ t.warning }}</small>
+                    {% endif %}
+                  </td>
+                  <td><code class="small">{{ t.reference }}</code></td>
+                  <td class="small text-muted">{{ t.description }}</td>
+                  <td class="small">
+                    <span class="badge bg-{{ t.status }} bg-opacity-10 text-{{ t.status }} border border-{{ t.status }} px-2 py-1" style="white-space:normal;">
+                      {{ t.resultat }}
+                    </span>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>{# end tab-content #}
+
+  {% else %}
+  <div class="alert alert-info">
+    <i class="bi bi-info-circle me-2"></i>Sélectionnez un essai dans la liste ci-dessus pour lancer l'analyse statistique.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+{% if selected_trial and selected_trial.trial_type == 'quantitative' %}
+
+// ── Droite d'Henry ─────────────────────────────────────────────────────────
+{% if stats.henry and stats.henry.points %}
+(function() {
+  const ctx = document.getElementById('henryChart');
+  if (!ctx) return;
+  const pts = {{ stats.henry.points | tojson }};
+  const slope = {{ stats.henry.slope }};
+  const intercept = {{ stats.henry.intercept }};
+  const xs = pts.map(p => p.x);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  new Chart(ctx, {
+    data: {
+      datasets: [
+        {
+          type: 'scatter',
+          label: 'Données observées',
+          data: pts.map(p => ({x: p.x, y: p.normit})),
+          backgroundColor: 'rgba(54,162,235,0.8)',
+          pointRadius: 5,
+        },
+        {
+          type: 'line',
+          label: 'Droite d\'Henry (R²={{ stats.henry.r_squared }})',
+          data: [
+            {x: minX, y: slope * minX + intercept},
+            {x: maxX, y: slope * maxX + intercept},
+          ],
+          borderColor: '#e74c3c',
+          borderDash: [5, 3],
+          pointRadius: 0,
+          fill: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom' } },
+      scales: {
+        x: { title: { display: true, text: 'Valeur mesurée' } },
+        y: { title: { display: true, text: 'Normit' } },
+      }
+    }
+  });
+})();
+{% endif %}
+
+// ── KDE Chart ──────────────────────────────────────────────────────────────
+{% if stats.kde %}
+(function() {
+  const ctx = document.getElementById('kdeChart');
+  if (!ctx) return;
+  const kde = {{ stats.kde | tojson }};
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: kde.map(p => p.x.toFixed(3)),
+      datasets: [{
+        label: 'Densité (KDE)',
+        data: kde.map(p => p.y),
+        borderColor: '#9b59b6',
+        backgroundColor: 'rgba(155,89,182,0.15)',
+        fill: true,
+        pointRadius: 0,
+        tension: 0.4,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { title: { display: true, text: 'Valeur' } },
+        y: { title: { display: true, text: 'Densité' } },
+      }
+    }
+  });
+})();
+{% endif %}
+
+// ── Boxplot Chart (simplifié via bar chart horizontal) ────────────────────
+{% if stats.boxplot and stats.boxplot.q1 is not none %}
+(function() {
+  const ctx = document.getElementById('boxplotChart');
+  if (!ctx) return;
+  const q1 = {{ stats.boxplot.q1 }};
+  const med = {{ stats.boxplot.median }};
+  const q3 = {{ stats.boxplot.q3 }};
+  const lf = {{ stats.boxplot.lower_fence }};
+  const uf = {{ stats.boxplot.upper_fence }};
+  const outliers = {{ stats.boxplot.outliers | tojson }};
+
+  // Représentation visuelle simplifiée via scatter
+  const datasets = [
+    { label: 'Q1-Q3 (IQR)', data: [{x: q1, y: 1}, {x: q3, y: 1}], borderColor: '#3498db', backgroundColor: 'rgba(52,152,219,0.3)', type: 'bar', barPercentage: 0.4 },
+    { label: 'Médiane', data: [{x: med, y: 1}], backgroundColor: '#e74c3c', pointRadius: 10, type: 'scatter' },
+    { label: 'Moustaches', data: [{x: lf, y: 1}, {x: uf, y: 1}], backgroundColor: '#2ecc71', pointRadius: 6, type: 'scatter' },
+  ];
+  if (outliers.length > 0) {
+    datasets.push({ label: 'Aberrants', data: outliers.map(v => ({x: v, y: 1})), backgroundColor: '#e74c3c', pointStyle: 'rectRot', pointRadius: 8, type: 'scatter' });
+  }
+
+  new Chart(ctx, {
+    data: { datasets },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom' } },
+      scales: {
+        x: { title: { display: true, text: 'Valeur' } },
+        y: { display: false }
+      }
+    }
+  });
+})();
+{% endif %}
+
+{% elif selected_trial and selected_trial.trial_type == 'qualitative' %}
+
+// ── Donut Qualitatif ───────────────────────────────────────────────────────
+{% if stats.distribution %}
+(function() {
+  const ctx = document.getElementById('qualDonutChart');
+  if (!ctx) return;
+  const dist = {{ stats.distribution | tojson }};
+  const labels = Object.keys(dist);
+  const data = Object.values(dist);
+  const colors = ['#2ecc71','#e74c3c','#3498db','#f39c12','#9b59b6','#1abc9c','#e67e22'];
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{ data: data, backgroundColor: colors.slice(0, labels.length), borderWidth: 2 }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.label}: ${ctx.raw} lab(s) (${(ctx.raw / data.reduce((a,b)=>a+b,0) * 100).toFixed(1)}%)`
+          }
+        }
+      }
+    }
+  });
+})();
+{% endif %}
+
+{% elif selected_trial and selected_trial.trial_type == 'solidite' %}
+
+// ── Radar Solidité ──────────────────────────────────────────────────────────
+{% if stats.radar_data %}
+(function() {
+  const ctx = document.getElementById('soliditeRadarChart');
+  if (!ctx) return;
+  const radar = {{ stats.radar_data | tojson }};
+  new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: radar.map(r => r.label),
+      datasets: [
+        {
+          label: 'Note moyenne',
+          data: radar.map(r => r.mean || 0),
+          borderColor: '#f39c12',
+          backgroundColor: 'rgba(243,156,18,0.2)',
+          pointBackgroundColor: '#f39c12',
+        },
+        {
+          label: '% Conformité',
+          data: radar.map(r => (r.conformity_rate || 0) / 20),  // Normaliser sur 5
+          borderColor: '#2ecc71',
+          backgroundColor: 'rgba(46,204,113,0.15)',
+          pointBackgroundColor: '#2ecc71',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        r: {
+          min: 0, max: 5,
+          ticks: { stepSize: 1 },
+          grid: { color: 'rgba(0,0,0,0.1)' }
+        }
+      },
+      plugins: { legend: { position: 'bottom' } }
+    }
+  });
+})();
+{% endif %}
+
+{% endif %}
+</script>
+{% endblock %}

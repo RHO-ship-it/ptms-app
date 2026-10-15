@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}Statistiques ISO 13528 — {{ selected_campaign.name if selected_campaign else 'Vue globale' }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+  <!-- ── Header ────────────────────────────────────────────────────────── -->
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h1 class="h3 fw-bold mb-1">
+        <i class="bi bi-bar-chart-line-fill text-primary me-2"></i>Statistiques des Essais
+      </h1>
+      <p class="text-muted mb-0">Analyse conforme ISO 13528 / ISO/IEC 17043</p>
+    </div>
+  </div>
+
+  <!-- ── Sélection campagne ──────────────────────────────────────────── -->
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-body py-3">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-6">
+          <label class="form-label fw-semibold small text-muted mb-1">
+            <i class="bi bi-collection me-1"></i>Campagne
+          </label>
+          <select name="campaign_id" class="form-select" onchange="this.form.action='/statistics/campaign/'+this.value; this.form.submit()">
+            <option value="">-- Sélectionner une campagne --</option>
+            {% for c in campaigns %}
+            <option value="{{ c.id }}" {% if selected_campaign and c.id == selected_campaign.id %}selected{% endif %}>
+              {{ c.reference }} — {{ c.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {% if not selected_campaign %}
+  <div class="alert alert-info">
+    <i class="bi bi-info-circle me-2"></i>Sélectionnez une campagne pour afficher les statistiques des essais.
+  </div>
+  {% endif %}
+
+  {% if selected_campaign %}
+  <!-- ── KPI campagne ────────────────────────────────────────────────── -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body text-center">
+          <div class="display-6 fw-bold text-primary">{{ trial_stats|length }}</div>
+          <div class="text-muted small">Essais</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body text-center">
+          <div class="display-6 fw-bold text-success">{{ trial_stats|selectattr('rows')|map(attribute='rows')|map('length')|sum }}</div>
+          <div class="text-muted small">Résultats soumis</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body text-center">
+          <div class="display-6 fw-bold text-info">{{ selected_campaign.reference }}</div>
+          <div class="text-muted small">Référence</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body text-center">
+          <div class="display-6 fw-bold text-warning">
+            <span class="badge bg-{{ 'success' if selected_campaign.status == 'active' else 'secondary' }}">{{ selected_campaign.status }}</span>
+          </div>
+          <div class="text-muted small">Statut</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Essais ──────────────────────────────────────────────────────── -->
+  {% for ts in trial_stats %}
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+      <div>
+        <h5 class="mb-0 fw-bold">
+          <i class="bi bi-clipboard2-data me-2 text-primary"></i>{{ ts.trial.name }}
+          <span class="badge bg-light text-dark ms-2">{{ ts.trial.method or '' }}</span>
+        </h5>
+        <small class="text-muted">{{ ts.trial.parameter }} {% if ts.trial.unit %}({{ ts.trial.unit }}){% endif %} — {{ ts.n }} résultats</small>
+      </div>
+      {% if ts.below_min is defined and ts.below_min %}
+      <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i>Participants insuffisants ({{ ts.n }}/{{ ts.n_min }})</span>
+      {% endif %}
+    </div>
+    <div class="card-body">
+
+      {% if ts.trial.trial_type == 'quantitative' %}
+      <!-- Statistiques quantitatives -->
+      <div class="row g-3 mb-3">
+        <div class="col-md-3">
+          <div class="bg-light rounded-3 p-3 text-center">
+            <div class="text-muted small">Valeur Assignée (X<sub>pt</sub>)</div>
+            <div class="h4 fw-bold text-primary mb-0">{{ "%.4f"|format(ts.target_val) if ts.target_val is not none else '—' }}</div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="bg-light rounded-3 p-3 text-center">
+            <div class="text-muted small">Écart-type (σ<sub>pt</sub>)</div>
+            <div class="h4 fw-bold text-info mb-0">{{ "%.4f"|format(ts.target_sd) if ts.target_sd is not none else '—' }}</div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="bg-light rounded-3 p-3 text-center">
+            <div class="text-muted small">u(x<sub>pt</sub>)</div>
+            <div class="h4 fw-bold text-secondary mb-0">{{ "%.5f"|format(ts.u_xpt) if ts.u_xpt is not none else '—' }}</div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="bg-light rounded-3 p-3 text-center">
+            <div class="text-muted small">U(x<sub>pt</sub>) (k=2)</div>
+            <div class="h4 fw-bold text-secondary mb-0">{{ "%.5f"|format(ts.U_xpt) if ts.U_xpt is not none else '—' }}</div>
+          </div>
+        </div>
+      </div>
+
+      {% if ts.z_prime_recommended %}
+      <div class="alert alert-info py-2 mb-3">
+        <i class="bi bi-info-circle me-1"></i> <strong>z'-score recommandé :</strong> u(x<sub>pt</sub>) ≥ 0.3 × σ<sub>pt</sub>. Le dénominateur intègre l'incertitude de la valeur assignée.
+      </div>
+      {% endif %}
+
+      {% if ts.grubbs %}
+      <div class="alert {% if ts.grubbs.status == 'Correct' %}alert-success{% elif 'aberrante' in ts.grubbs.status %}alert-danger{% else %}alert-warning{% endif %} py-2 mb-3">
+        <i class="bi bi-funnel me-1"></i> <strong>Test de Grubbs :</strong> {{ ts.grubbs.status }}
+        {% if ts.grubbs.G %} — G = {{ ts.grubbs.G }}{% endif %}
+      </div>
+      {% endif %}
+
+      {% if ts.homog_status is not none %}
+      <div class="alert {% if ts.homog_status %}alert-success{% else %}alert-danger{% endif %} py-2 mb-3">
+        <i class="bi bi-check2-all me-1"></i> <strong>Homogénéité :</strong> {% if ts.homog_status %}Conforme{% else %}Non conforme{% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Tableau des résultats quantitatifs -->
+      <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Code Labo</th>
+              <th>Valeur</th>
+              <th>Réplicat 2</th>
+              <th>Z-Score</th>
+              <th>Évaluation</th>
+              <th>Grubbs</th>
+              <th>E<sub>n</sub></th>
+              <th>Validé</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in ts.rows %}
+            <tr class="{% if row.grubbs_outlier %}table-danger{% endif %}">
+              <td><span class="fw-semibold font-monospace">{{ row.lab }}</span></td>
+              <td>{{ "%.4f"|format(row.value) if row.value is not none else '—' }}</td>
+              <td>{{ "%.4f"|format(row.replicate_2) if row.replicate_2 is not none else '—' }}</td>
+              <td>
+                {% if row.z_score is not none %}
+                <span class="fw-bold">{{ row.z_score }}</span>
+                {% else %}—{% endif %}
+              </td>
+              <td>
+                {% if row.z_interp %}
+                <span class="badge bg-{{ row.z_badge }}">{{ row.z_interp }}</span>
+                {% else %}—{% endif %}
+              </td>
+              <td>
+                {% if row.grubbs_outlier %}
+                <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i>Aberrant</span>
+                {% else %}
+                <span class="text-success"><i class="bi bi-check-circle"></i></span>
+                {% endif %}
+              </td>
+              <td>{{ "%.3f"|format(row.en_score) if row.en_score is not none else '—' }}</td>
+              <td>
+                {% if row.validated %}
+                <span class="badge bg-success"><i class="bi bi-check-lg"></i></span>
+                {% else %}
+                <span class="badge bg-secondary">En attente</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% else %}
+      <!-- Statistiques qualitatives -->
+      <div class="row g-3 mb-3">
+        <div class="col-md-4">
+          <div class="bg-light rounded-3 p-3 text-center">
+            <div class="text-muted small">Consensus</div>
+            <div class="h4 fw-bold text-primary mb-0">{{ ts.consensus or '—' }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="bg-light rounded-3 p-3 text-center">
+            <div class="text-muted small">Taux d'accord</div>
+            <div class="h4 fw-bold text-success mb-0">{{ "%.1f"|format(ts.agreement_rate) if ts.agreement_rate is not none else '—' }}%</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="bg-light rounded-3 p-3 text-center">
+            <div class="text-muted small">Résultats</div>
+            <div class="h4 fw-bold text-info mb-0">{{ ts.n }}</div>
+          </div>
+        </div>
+      </div>
+
+      {% if ts.distribution %}
+      <h6 class="fw-semibold mb-2">Distribution des réponses</h6>
+      <div class="mb-3">
+        {% for key, count in ts.distribution.items() %}
+        <span class="badge bg-{{ 'primary' if key == ts.consensus else 'secondary' }} me-2 mb-1">{{ key }}: {{ count }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Code Labo</th>
+              <th>Résultat</th>
+              <th>Conforme</th>
+              <th>Validé</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in ts.rows %}
+            <tr>
+              <td><span class="fw-semibold font-monospace">{{ row.lab }}</span></td>
+              <td>{{ row.result or '—' }}</td>
+              <td>
+                {% if row.conform is not none %}
+                <span class="badge bg-{{ 'success' if row.conform else 'danger' }}">{{ 'Conforme' if row.conform else 'Non conforme' }}</span>
+                {% else %}—{% endif %}
+              </td>
+              <td>
+                {% if row.validated %}
+                <span class="badge bg-success"><i class="bi bi-check-lg"></i></span>
+                {% else %}
+                <span class="badge bg-secondary">En attente</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+  {% endfor %}
+
+  {% if trial_stats|length == 0 and selected_campaign %}
+  <div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle me-2"></i>Aucun essai n'est encore rattaché à cette campagne.
+  </div>
+  {% endif %}
+
+  {% endif %}
+
+</div>
+{% endblock %}

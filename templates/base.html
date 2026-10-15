@@ -910,6 +910,17 @@
         </div>
 
         <div class="ptms-sidebar-section">
+            <div class="ptms-sidebar-section-label">Commercial & CRM</div>
+            <a href="{{ url_for('commercial.index') }}" class="ptms-nav-link {% if request.endpoint == 'commercial.index' %}active{% endif %}">
+                <i class="bi bi-briefcase"></i> Portefeuille CRM
+            </a>
+            <a href="{{ url_for('commercial.campaign_analytics') }}" class="ptms-nav-link {% if request.endpoint == 'commercial.campaign_analytics' %}active{% endif %}">
+                <i class="bi bi-graph-up-arrow"></i> Analytics Campagnes
+                <span class="ptms-nav-badge" style="background:#10B981;">17025</span>
+            </a>
+        </div>
+
+        <div class="ptms-sidebar-section">
             <div class="ptms-sidebar-section-label">Suivi & Résultats</div>
             <a href="{{ url_for('participants.tracker') }}" class="ptms-nav-link {% if request.endpoint and 'tracker' in request.endpoint %}active{% endif %}">
                 <i class="bi bi-list-check"></i> Suivi des soumissions
@@ -921,8 +932,11 @@
 
         <div class="ptms-sidebar-section">
             <div class="ptms-sidebar-section-label">Analyse & Statistiques</div>
-            <a href="{{ url_for('traitement.atelier') }}" class="ptms-nav-link {% if request.endpoint and 'traitement' in request.endpoint %}active{% endif %}">
+            <a href="{{ url_for('traitement.atelier') }}" class="ptms-nav-link {% if request.endpoint == 'traitement.atelier' %}active{% endif %}">
                 <i class="bi bi-calculator"></i> Atelier statistique
+            </a>
+            <a href="{{ url_for('traitement.dashboard') }}" class="ptms-nav-link {% if request.endpoint == 'traitement.dashboard' %}active{% endif %}">
+                <i class="bi bi-grid-3x3-gap-fill"></i> Dashboard Récapitulatif
             </a>
             <a href="{{ url_for('statistics.index') }}" class="ptms-nav-link {% if request.endpoint and 'statistics' in request.endpoint %}active{% endif %}">
                 <i class="bi bi-graph-up-arrow"></i> Centre de statistiques

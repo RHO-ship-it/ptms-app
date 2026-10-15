@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Erreur serveur (500){% endblock %}
+
+{% block content %}
+<div class="container py-5 text-center">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm p-4 rounded-4">
+                <div class="display-1 fw-bold text-danger mb-2">500</div>
+                <h4 class="fw-bold mb-3">Erreur Interne du Serveur</h4>
+                <p class="text-muted mb-4">Un incident technique s'est produit. Les administrateurs en ont été notifiés.</p>
+                <div>
+                    <a href="{{ url_for('dashboard.index') }}" class="btn btn-outline-primary px-4 py-2 rounded-pill me-2">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Réessayer
+                    </a>
+                    <a href="{{ url_for('dashboard.index') }}" class="btn btn-primary px-4 py-2 rounded-pill">
+                        <i class="bi bi-house-door-fill me-2"></i>Tableau de bord
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block content_noauth %}
+<div class="container py-5 text-center" style="min-height: 100vh; display: flex; align-items: center; justify-content: center;">
+    <div class="card border-0 shadow-lg p-5 rounded-4" style="max-width: 480px; width: 100%;">
+        <div class="display-1 fw-bold text-danger mb-2">500</div>
+        <h4 class="fw-bold mb-3">Incident Technique</h4>
+        <p class="text-muted mb-4">Le service est momentanément indisponible.</p>
+        <a href="{{ url_for('auth.login') }}" class="btn btn-primary px-4 py-2 rounded-pill">
+            <i class="bi bi-box-arrow-in-right me-2"></i>Retour à la connexion
+        </a>
+    </div>
+</div>
+{% endblock %}

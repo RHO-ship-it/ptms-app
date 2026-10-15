@@ -106,28 +106,48 @@ def export_full_report_word(campaign_id):
 def _export_excel(campaign, rows):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
+    import re
 
     wb = Workbook()
-    ws = wb.active
-    ws.title = "Résultats"
+    wb.remove(wb.active)  # Remove default sheet
 
-    headers = ["Essai", "Paramètre", "Unité", "Laboratoire", "Valeur soumise",
-               "Valeur assignée", "Écart-type (sigma)", "Z-score", "Interprétation", "Validé", "Date de soumission"]
-    ws.append(headers)
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    for cell in ws[1]:
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
+    header_font = Font(bold=True, color="FFFFFF")
 
+    # Group rows by trial
+    trials_data = {}
     for r in rows:
-        ws.append([r["trial"], r["parameter"], r["unit"], r["lab"], r["value"],
-                   r["target_value"], r["target_sd"], r["z_score"], r["interpretation"],
-                   r["validated"], r["submitted_at"]])
+        t_name = r["trial"]
+        if t_name not in trials_data:
+            trials_data[t_name] = []
+        trials_data[t_name].append(r)
 
-    for col in ws.columns:
-        max_len = max((len(str(c.value)) for c in col if c.value is not None), default=10)
-        ws.column_dimensions[col[0].column_letter].width = max_len + 3
+    if not trials_data:
+        ws = wb.create_sheet("Vide")
+        ws.append(["Aucun résultat soumis pour cette campagne."])
+    else:
+        for t_name, t_rows in trials_data.items():
+            # Sanitize sheet name: <= 31 chars, no invalid chars
+            safe_name = re.sub(r'[\\*?:/\[\]]', '', t_name)[:31]
+            ws = wb.create_sheet(safe_name)
+
+            headers = ["Essai", "Paramètre", "Unité", "Laboratoire", "Valeur soumise",
+                       "Valeur assignée", "Écart-type (sigma)", "Z-score", "Interprétation", "Validé", "Date de soumission"]
+            ws.append(headers)
+            
+            for cell in ws[1]:
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal="center")
+
+            for r in t_rows:
+                ws.append([r["trial"], r["parameter"], r["unit"], r["lab"], r["value"],
+                           r["target_value"], r["target_sd"], r["z_score"], r["interpretation"],
+                           r["validated"], r["submitted_at"]])
+
+            for col in ws.columns:
+                max_len = max((len(str(c.value)) for c in col if c.value is not None), default=10)
+                ws.column_dimensions[col[0].column_letter].width = min(max_len + 3, 50)
 
     buf = io.BytesIO()
     wb.save(buf)
