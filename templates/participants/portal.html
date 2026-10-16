@@ -48,7 +48,7 @@
       </div>
       {% endif %}
       {% if selected_campaign and selected_campaign.report_published %}
-      <a href="{{ url_for('reports.export_campaign', campaign_id=selected_campaign.id, fmt='pdf') }}" class="btn btn-success btn-sm d-flex align-items-center gap-2 fw-semibold shadow-sm">
+      <a href="{{ url_for('reports.my_report', campaign_id=selected_campaign.id) }}" class="btn btn-success btn-sm d-flex align-items-center gap-2 fw-semibold shadow-sm">
         <i class="bi bi-file-earmark-pdf"></i>Rapport Final
       </a>
       {% endif %}
