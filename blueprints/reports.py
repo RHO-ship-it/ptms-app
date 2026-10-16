@@ -3,7 +3,7 @@ import io
 from datetime import datetime
 
 from flask import Blueprint, render_template, request, send_file, current_app, flash, redirect, url_for
-from flask_login import login_required
+from flask_login import login_required, current_user
 
 from models import Campaign
 from utils import z_score_interpretation, log_action, robust_stats, qualitative_consensus
@@ -71,6 +71,24 @@ def export_campaign(campaign_id, fmt):
     else:
         flash("Format d'export inconnu.", "danger")
         return redirect(url_for("reports.index"))
+
+
+@reports_bp.route("/campaign/<int:campaign_id>/my-report")
+@login_required
+@roles_required("participant")
+def my_report(campaign_id):
+    """Rapport PDF d'un participant : uniquement les résultats de son propre
+    laboratoire, et seulement une fois le rapport publié par l'administrateur."""
+    campaign = Campaign.query.get_or_404(campaign_id)
+    if not campaign.report_published:
+        flash("Le rapport de cette campagne n'est pas encore publié.", "warning")
+        return redirect(url_for("participants.portal"))
+    lab = current_user.laboratory
+    if lab is None:
+        flash("Votre compte n'est rattaché à aucun laboratoire.", "warning")
+        return redirect(url_for("dashboard.index"))
+    rows = [row for row in _gather_report_rows(campaign) if row["lab"] == lab.code]
+    return _export_pdf(campaign, rows)
 
 
 @reports_bp.route("/campaign/<int:campaign_id>/export-fte/<template>")
