@@ -953,6 +953,9 @@
             <a href="{{ url_for('participants.portal') }}" class="ptms-nav-link {% if request.endpoint and 'portal' in request.endpoint %}active{% endif %}">
                 <i class="bi bi-inbox-fill"></i> Mes formulaires
             </a>
+            <a href="{{ url_for('reports.my_reports_page') }}" class="ptms-nav-link {% if request.endpoint == 'reports.my_reports_page' %}active{% endif %}">
+                <i class="bi bi-file-earmark-text-fill"></i> Mes rapports
+            </a>
             <a href="{{ url_for('participants.my_contact_info') }}" class="ptms-nav-link {% if request.endpoint and 'contact' in request.endpoint %}active{% endif %}">
                 <i class="bi bi-person-lines-fill"></i> Mes coordonnées
             </a>
