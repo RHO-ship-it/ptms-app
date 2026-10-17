@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Catalogue des essais d'aptitude{% endblock %}
+{% block content %}
+<div class="container-fluid px-4 py-4">
+  <h3 class="fw-bold mb-1"><i class="bi bi-journal-bookmark-fill text-primary me-2"></i>Catalogue des essais d'aptitude</h3>
+  <p class="text-muted mb-4">Réservez votre participation aux campagnes ouvertes.
+    {% if lab %}Laboratoire <strong>{{ lab.code }}</strong>.{% endif %}</p>
+
+  <div class="mb-4" style="max-width:520px;">
+    <div class="input-group"><span class="input-group-text"><i class="bi bi-search"></i></span>
+      <input type="search" id="cat-search" class="form-control" placeholder="Rechercher une campagne, une référence…"></div>
+  </div>
+
+  <div class="row g-3">
+    {% for it in items %}
+    {% set c = it.campaign %}
+    <div class="col-12 col-md-6 col-xl-4 cat-item" data-text="{{ (c.name ~ ' ' ~ c.reference ~ ' ' ~ (c.description or ''))|lower }}">
+      <div class="card h-100 shadow-sm" style="border-radius:14px;">
+        <div class="card-body d-flex flex-column">
+          <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+            <h5 class="mb-0 fw-bold">{{ c.name }}</h5>
+            {% if it.state == 'enrolled' %}<span class="badge text-bg-success">Inscrit</span>
+            {% elif it.state == 'pending' %}<span class="badge text-bg-warning">Demande en attente</span>
+            {% else %}<span class="badge text-bg-primary">Ouvert</span>{% endif %}
+          </div>
+          <div class="text-muted small mb-1"><i class="bi bi-hash"></i> {{ c.reference }}</div>
+          <div class="text-muted small mb-1"><i class="bi bi-calendar-event"></i>
+            {{ c.start_date.strftime('%d/%m/%Y') if c.start_date else '—' }} → {{ c.end_date.strftime('%d/%m/%Y') if c.end_date else '—' }}</div>
+          <div class="text-muted small mb-2"><i class="bi bi-clipboard-data"></i> {{ c.trials|length }} essai(s)</div>
+          {% if c.trials %}
+          <ul class="small ps-3 mb-2">
+            {% for t in c.trials[:5] %}<li>{{ t.name }}{% if t.parameter %} <span class="text-muted">({{ t.parameter }})</span>{% endif %}</li>{% endfor %}
+            {% if c.trials|length > 5 %}<li class="text-muted">… et {{ c.trials|length - 5 }} autre(s)</li>{% endif %}
+          </ul>{% endif %}
+          {% if c.description %}<p class="small text-muted">{{ c.description[:160] }}{% if c.description|length > 160 %}…{% endif %}</p>{% endif %}
+          {% if it.rejected and it.state == 'open' %}
+          <div class="alert alert-warning py-2 small mb-2">Votre précédente demande n'a pas été acceptée.{% if it.note %} Motif : {{ it.note }}{% endif %}</div>{% endif %}
+          <div class="mt-auto pt-2">
+            {% if it.state == 'enrolled' %}
+              <a class="btn btn-outline-success w-100" href="{{ url_for('participants.portal', campaign_id=c.id) }}"><i class="bi bi-inbox-fill me-1"></i>Mes formulaires</a>
+            {% elif it.state == 'pending' %}
+              <button class="btn btn-outline-secondary w-100" disabled><i class="bi bi-hourglass-split me-1"></i>En attente de validation</button>
+            {% else %}
+              <form method="post" action="{{ url_for('catalogue.book', campaign_id=c.id) }}">
+                <input type="text" name="message" maxlength="300" class="form-control form-control-sm mb-2" placeholder="Message pour l'équipe (facultatif)">
+                <button class="btn btn-primary w-100" type="submit"><i class="bi bi-cart-plus me-1"></i>Réserver</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="col-12"><div class="text-center text-muted p-5 border rounded-3"><i class="bi bi-journal-x fs-1 d-block mb-2"></i>Aucune campagne ouverte à la réservation pour le moment.</div></div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+document.getElementById('cat-search').addEventListener('input', function (e) {
+  var q = e.target.value.trim().toLowerCase();
+  document.querySelectorAll('.cat-item').forEach(function (el) { el.style.display = (!q || el.dataset.text.indexOf(q) !== -1) ? '' : 'none'; });
+});
+</script>
+{% endblock %}

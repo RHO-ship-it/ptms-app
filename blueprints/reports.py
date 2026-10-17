@@ -349,7 +349,7 @@ def _uncertainty_pdf(campaign, lab, rows):
         if sub.en_score is None:
             verdict = "-"
         else:
-            verdict = "Satisfaisant (|En| ≤ 1)" if abs(sub.en_score) <= 1 else "Non satisfaisant (|En| > 1)"
+            verdict = "Satisfaisant (|En| < 1)" if abs(sub.en_score) < 1 else "Non satisfaisant (|En| ≥ 1)"
         data.append([trial.name, trial.unit or "-", fmt(sub.value), fmt(sub.uncertainty),
                      fmt(trial.target_value), fmt(sub.z_score),
                      "-" if sub.en_score is None else f"{sub.en_score:.2f}", verdict])
@@ -366,7 +366,7 @@ def _uncertainty_pdf(campaign, lab, rows):
     el.append(Spacer(1, 0.4 * cm))
     el.append(Paragraph(
         "Le score En compare l'écart entre le résultat du laboratoire et la valeur assignée à l'incertitude élargie "
-        "combinée (ISO 13528 §9.3). |En| ≤ 1 indique que le résultat est compatible avec la valeur assignée "
+        "combinée (ISO 13528 §9.3). |En| < 1 indique que le résultat est compatible avec la valeur assignée "
         "compte tenu de l'incertitude déclarée.", styles["Normal"]))
     doc.build(el)
     buf.seek(0)

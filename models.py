@@ -335,3 +335,22 @@ class Notification(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship("User")
+
+
+class EnrollmentRequest(db.Model):
+    """Demande de réservation d'un laboratoire pour une campagne du catalogue."""
+    __tablename__ = "enrollment_requests"
+
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey("campaigns.id"), nullable=False)
+    laboratory_id = db.Column(db.Integer, db.ForeignKey("laboratories.id"), nullable=False)
+    requested_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    status = db.Column(db.String(20), default="pending", nullable=False)  # pending, approved, rejected
+    message = db.Column(db.String(300), nullable=True)
+    decision_note = db.Column(db.String(300), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    decided_at = db.Column(db.DateTime, nullable=True)
+    decided_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+
+    campaign = db.relationship("Campaign", backref=db.backref("enrollment_requests", cascade="all, delete-orphan"))
+    laboratory = db.relationship("Laboratory", backref=db.backref("enrollment_requests", cascade="all, delete-orphan"))

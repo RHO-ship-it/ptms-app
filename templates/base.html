@@ -907,6 +907,11 @@
             <a href="{{ url_for('laboratories.list_labs') }}" class="ptms-nav-link {% if request.endpoint and 'laborator' in request.endpoint %}active{% endif %}">
                 <i class="bi bi-building"></i> Laboratoires
             </a>
+            {% if current_user.role in ['admin','chef_technique'] %}
+            <a href="{{ url_for('catalogue.requests') }}" class="ptms-nav-link {% if request.endpoint == 'catalogue.requests' %}active{% endif %}">
+                <i class="bi bi-inbox-fill"></i> Demandes de réservation
+            </a>
+            {% endif %}
         </div>
 
         <div class="ptms-sidebar-section">
@@ -955,6 +960,12 @@
             </a>
             <a href="{{ url_for('reports.my_reports_page') }}" class="ptms-nav-link {% if request.endpoint == 'reports.my_reports_page' %}active{% endif %}">
                 <i class="bi bi-file-earmark-text-fill"></i> Mes rapports
+            </a>
+            <a href="{{ url_for('catalogue.index') }}" class="ptms-nav-link {% if request.endpoint == 'catalogue.index' %}active{% endif %}">
+                <i class="bi bi-journal-bookmark-fill"></i> Catalogue
+            </a>
+            <a href="{{ url_for('catalogue.protocol') }}" class="ptms-nav-link {% if request.endpoint == 'catalogue.protocol' %}active{% endif %}">
+                <i class="bi bi-bar-chart-line-fill"></i> Protocole statistique
             </a>
             <a href="{{ url_for('participants.my_contact_info') }}" class="ptms-nav-link {% if request.endpoint and 'contact' in request.endpoint %}active{% endif %}">
                 <i class="bi bi-person-lines-fill"></i> Mes coordonnées

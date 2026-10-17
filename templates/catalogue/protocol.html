@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Protocole statistique{% endblock %}
+{% block content %}
+<div class="container-fluid px-4 py-4" style="max-width:980px;">
+  <h3 class="fw-bold mb-1"><i class="bi bi-bar-chart-line-fill text-primary me-2"></i>Protocole statistique</h3>
+  <p class="text-muted mb-4">Méthodes appliquées par PTMS pour évaluer la performance des laboratoires, conformément à l'ISO/IEC 17043 et à l'ISO 13528.</p>
+
+  <div class="card shadow-sm mb-3" style="border-radius:14px;"><div class="card-body">
+    <h5 class="fw-bold">1. Valeur assignée et valeur consensuelle</h5>
+    <p>Pour chaque essai quantitatif, l'organisateur peut définir une <strong>valeur assignée</strong> a priori. À défaut, la valeur de référence <em>x*</em> est estimée à partir des résultats des participants par des méthodes robustes, qui limitent l'influence des valeurs aberrantes :</p>
+    <ul>
+      <li><strong>Algorithme A</strong> (ISO 13528 §C.3.1) : moyenne et écart-type robustes, calculés par itérations.</li>
+      <li><strong>Médiane et MADe</strong> : MADe = 1,483 × médiane(|x<sub>i</sub> − médiane|). Si MADe est nul (au moins la moitié des résultats identiques), le nIQR (0,7413 × (Q3 − Q1)) est utilisé.</li>
+      <li><strong>M-estimateur logistique</strong> : estimation robuste de la moyenne et de l'échelle.</li>
+    </ul>
+  </div></div>
+
+  <div class="card shadow-sm mb-3" style="border-radius:14px;"><div class="card-body">
+    <h5 class="fw-bold">2. Écart-type pour l'évaluation de l'aptitude (σ<sub>pt</sub>)</h5>
+    <p>Trois méthodes sont disponibles, choisies pour chaque essai :</p>
+    <ul>
+      <li><strong>Valeur fixe</strong> : fixée par l'organisateur (expérience, adéquation à l'usage).</li>
+      <li><strong>Équation de Horwitz modifiée par Thompson</strong>, en fonction de la concentration C : σ = 0,22 C si C &lt; 1,2·10<sup>−7</sup> ; σ = 0,22 C<sup>0,8495</sup> si 1,2·10<sup>−7</sup> ≤ C ≤ 0,138 ; σ = 0,02 √C si C &gt; 0,138.</li>
+      <li><strong>Écart-type robuste</strong> des résultats des participants (Algorithme A / MADe).</li>
+    </ul>
+    <p class="mb-0">La répétabilité inter-laboratoires peut être estimée par l'<strong>Algorithme S</strong> (ISO 13528 §C.3.2).</p>
+  </div></div>
+
+  <div class="card shadow-sm mb-3" style="border-radius:14px;"><div class="card-body">
+    <h5 class="fw-bold">3. Scores de performance</h5>
+    <p><strong>z-score</strong> : z = (x<sub>i</sub> − X) / σ<sub>pt</sub>. Lorsque l'incertitude de la valeur assignée u(x<sub>pt</sub>) est significative (≥ 0,3 σ<sub>pt</sub>), le <strong>z′-score</strong> est utilisé : z′ = (x<sub>i</sub> − X) / √(σ<sub>pt</sub>² + u(x<sub>pt</sub>)²).</p>
+    <table class="table table-sm w-auto">
+      <thead><tr><th>Score</th><th>Évaluation</th></tr></thead>
+      <tbody>
+        <tr><td>|z| ≤ 2</td><td><span class="badge text-bg-success">Satisfaisant</span></td></tr>
+        <tr><td>2 &lt; |z| &lt; 3</td><td><span class="badge text-bg-warning">Douteux</span></td></tr>
+        <tr><td>|z| ≥ 3</td><td><span class="badge text-bg-danger">Non satisfaisant</span></td></tr>
+      </tbody>
+    </table>
+    <p class="mb-0"><strong>Nombre En</strong> (ISO 13528 §9.3), lorsque le laboratoire déclare son incertitude élargie U(x<sub>i</sub>) : En = (x<sub>i</sub> − x<sub>pt</sub>) / √(U(x<sub>i</sub>)² + U(x<sub>pt</sub>)²). Le résultat est satisfaisant si |En| &lt; 1 et non satisfaisant si |En| ≥ 1.</p>
+  </div></div>
+
+  <div class="card shadow-sm mb-3" style="border-radius:14px;"><div class="card-body">
+    <h5 class="fw-bold">4. Détection des valeurs aberrantes et contrôle des données</h5>
+    <ul class="mb-0">
+      <li><strong>Test de Grubbs</strong> (simple et double) : valeur correcte, isolée (5 %) ou aberrante (1 %).</li>
+      <li><strong>Test de Kolmogorov-Smirnov</strong> : écart de la distribution des résultats à la loi normale.</li>
+      <li><strong>Statistique h de Mandel</strong> (ISO 5725-2) : détection d'un biais systématique d'un laboratoire.</li>
+    </ul>
+  </div></div>
+
+  <div class="card shadow-sm mb-3" style="border-radius:14px;"><div class="card-body">
+    <h5 class="fw-bold">5. Essais qualitatifs</h5>
+    <p class="mb-0">Le résultat consensuel est le résultat le plus fréquent (mode). Chaque laboratoire est déclaré conforme ou non conforme à ce consensus, et l'accord entre laboratoires est mesuré par le taux d'accord et le <strong>coefficient kappa de Cohen</strong> (ISO 13528 §9.5).</p>
+  </div></div>
+
+  <div class="card shadow-sm mb-3" style="border-radius:14px;"><div class="card-body">
+    <h5 class="fw-bold">6. Homogénéité, stabilité et confidentialité</h5>
+    <p class="mb-0">L'homogénéité et la stabilité des échantillons sont évaluées avant l'envoi. Dans les rapports destinés aux participants, chaque laboratoire n'est identifié que par un code ; son nom n'est jamais communiqué aux autres participants.</p>
+  </div></div>
+</div>
+{% endblock %}
