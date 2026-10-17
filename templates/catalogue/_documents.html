@@ -1,0 +1,17 @@
+{% if documents %}
+<div class="card shadow-sm mb-4" style="border-radius:14px;"><div class="card-body">
+  <h6 class="fw-bold mb-3"><i class="bi bi-file-earmark-pdf-fill text-danger me-2"></i>Documents</h6>
+  {% for d in documents %}
+  <div class="d-flex align-items-center justify-content-between gap-2 py-2 {% if not loop.last %}border-bottom{% endif %}">
+    <div>
+      <div class="fw-semibold">{{ d.title }}</div>
+      <div class="small text-muted">PDF · {{ (d.size / 1024)|round|int }} Ko · ajouté le {{ d.uploaded_at.strftime('%d/%m/%Y') if d.uploaded_at else '—' }}</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener" href="{{ url_for('catalogue.document', doc_id=d.id) }}"><i class="bi bi-eye me-1"></i>Ouvrir</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('catalogue.document', doc_id=d.id, download=1) }}"><i class="bi bi-download me-1"></i>Télécharger</a>
+    </div>
+  </div>
+  {% endfor %}
+</div></div>
+{% endif %}

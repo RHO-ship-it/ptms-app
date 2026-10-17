@@ -1,10 +1,15 @@
+import io
+import os
 from datetime import datetime
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for
+from flask import Blueprint, render_template, request, flash, redirect, url_for, send_file
 from flask_login import login_required, current_user
 
 from extensions import db
 from models import Campaign, CampaignLaboratory, ParticipantForm, EnrollmentRequest, User
+from werkzeug.utils import secure_filename
+from sqlalchemy.orm import defer
+from models import PortalDocument
 from utils import notify, notify_role, log_action
 from blueprints.auth import roles_required
 
@@ -12,6 +17,15 @@ catalogue_bp = Blueprint("catalogue", __name__, template_folder="../templates/ca
 
 # Campagnes réservables : en préparation ou en cours (pas clôturées ni archivées).
 OPEN_STATUSES = ("draft", "active")
+
+# Rubriques auxquelles l'équipe peut joindre des PDF.
+DOC_KINDS = {"catalogue": "Catalogue des essais d'aptitude", "protocol": "Protocole statistique"}
+
+
+def _documents(kind):
+    """Documents d'une rubrique, sans charger leur contenu."""
+    return (PortalDocument.query.options(defer(PortalDocument.data))
+            .filter_by(kind=kind).order_by(PortalDocument.uploaded_at.desc()).all())
 
 
 @catalogue_bp.route("/")
@@ -39,7 +53,7 @@ def index():
             state = "open"
         items.append({"campaign": campaign, "state": state, "rejected": bool(req and req.status == "rejected"),
                       "note": req.decision_note if req and req.status == "rejected" else None})
-    return render_template("catalogue/index.html", lab=lab, items=items)
+    return render_template("catalogue/index.html", lab=lab, items=items, documents=_documents("catalogue"))
 
 
 @catalogue_bp.route("/<int:campaign_id>/book", methods=["POST"])
@@ -132,4 +146,70 @@ def decide(req_id, decision):
 @login_required
 def protocol():
     """Protocole statistique : méthodes appliquées par PTMS."""
-    return render_template("catalogue/protocol.html")
+    return render_template("catalogue/protocol.html", documents=_documents("protocol"))
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  DOCUMENTS PDF (catalogue et protocole) : joints par l'équipe, lus par tous
+# ═════════════════════════════════════════════════════════════════════════════
+
+@catalogue_bp.route("/documents")
+@login_required
+@roles_required("admin", "chef_technique")
+def documents():
+    """Gestion des PDF du catalogue et du protocole statistique."""
+    sections = [(kind, label, _documents(kind)) for kind, label in DOC_KINDS.items()]
+    return render_template("catalogue/documents.html", sections=sections)
+
+
+@catalogue_bp.route("/documents/upload", methods=["POST"])
+@login_required
+@roles_required("admin", "chef_technique")
+def upload_document():
+    kind = request.form.get("kind")
+    if kind not in DOC_KINDS:
+        flash("Rubrique inconnue.", "danger")
+        return redirect(url_for("catalogue.documents"))
+    file = request.files.get("file")
+    if file is None or not file.filename:
+        flash("Choisissez un fichier PDF à joindre.", "warning")
+        return redirect(url_for("catalogue.documents"))
+    data = file.read()
+    # Extension ET signature : un fichier renommé en .pdf est refusé.
+    if not file.filename.lower().endswith(".pdf") or not data.startswith(b"%PDF-"):
+        flash("Le fichier doit être un PDF valide.", "danger")
+        return redirect(url_for("catalogue.documents"))
+    stem = os.path.splitext(file.filename)[0].strip()
+    title = (request.form.get("title") or "").strip()[:200] or stem[:200] or "Document"
+    safe_name = secure_filename(file.filename) or "document.pdf"
+    doc = PortalDocument(kind=kind, title=title, filename=safe_name, size=len(data),
+                         data=data, uploaded_by=current_user.id)
+    db.session.add(doc)
+    db.session.commit()
+    log_action("create", "PortalDocument", doc.id, f"PDF « {title} » ajouté à : {DOC_KINDS[kind]}")
+    flash(f"« {title} » est maintenant visible par les participants.", "success")
+    return redirect(url_for("catalogue.documents"))
+
+
+@catalogue_bp.route("/documents/<int:doc_id>")
+@login_required
+def document(doc_id):
+    """Ouvre (ou télécharge avec ?download=1) un PDF. Réservé aux utilisateurs connectés."""
+    doc = PortalDocument.query.get_or_404(doc_id)
+    response = send_file(io.BytesIO(doc.data), mimetype="application/pdf",
+                         as_attachment=bool(request.args.get("download")), download_name=doc.filename)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@catalogue_bp.route("/documents/<int:doc_id>/delete", methods=["POST"])
+@login_required
+@roles_required("admin", "chef_technique")
+def delete_document(doc_id):
+    doc = PortalDocument.query.get_or_404(doc_id)
+    title = doc.title
+    db.session.delete(doc)
+    db.session.commit()
+    log_action("delete", "PortalDocument", doc_id, f"PDF « {title} » retiré")
+    flash(f"« {title} » a été retiré.", "success")
+    return redirect(url_for("catalogue.documents"))

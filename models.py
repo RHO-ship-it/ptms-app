@@ -354,3 +354,18 @@ class EnrollmentRequest(db.Model):
 
     campaign = db.relationship("Campaign", backref=db.backref("enrollment_requests", cascade="all, delete-orphan"))
     laboratory = db.relationship("Laboratory", backref=db.backref("enrollment_requests", cascade="all, delete-orphan"))
+
+
+class PortalDocument(db.Model):
+    """PDF joint par l'équipe au catalogue ou au protocole statistique.
+    Le contenu est stocké en base pour survivre aux redéploiements."""
+    __tablename__ = "portal_documents"
+
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(20), nullable=False)        # catalogue, protocol
+    title = db.Column(db.String(200), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    size = db.Column(db.Integer, nullable=False, default=0)
+    data = db.Column(db.LargeBinary, nullable=False)
+    uploaded_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
