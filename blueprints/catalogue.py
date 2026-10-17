@@ -19,12 +19,20 @@ catalogue_bp = Blueprint("catalogue", __name__, template_folder="../templates/ca
 OPEN_STATUSES = ("draft", "active")
 
 # Rubriques auxquelles l'équipe peut joindre des PDF.
-DOC_KINDS = {"catalogue": "Catalogue des essais d'aptitude", "protocol": "Protocole statistique",
-             "terms": "Conditions générales de vente"}
+DOC_KINDS = {"catalogue": "Catalogue général", "registration": "Registration sheets",
+             "protocol": "Protocole statistique", "terms": "Conditions générales de vente"}
 
 
 # Documents attendus dans la page « Documents » (fichier affiché, rubrique, titre).
 EXPECTED_DOCS = [
+    {"filename": "Catalogue_general_TTS_PT.pdf", "kind": "catalogue",
+     "title": "Catalogue général"},
+    {"filename": "Registration_sheet_Textile.pdf", "kind": "registration",
+     "title": "Registration sheet – Textile"},
+    {"filename": "Registration_sheet_Cuir.pdf", "kind": "registration",
+     "title": "Registration sheet – Cuir"},
+    {"filename": "Registration_sheet_Huile_olive.pdf", "kind": "registration",
+     "title": "Registration sheet – Huile d'olive"},
     {"filename": "protocole_PT.pdf", "kind": "protocol",
      "title": "Proficiency Testing General Protocol (ITE 001)"},
     {"filename": "Condition_générale_de_vente_TTS_PT.pdf", "kind": "terms",
@@ -72,7 +80,8 @@ def index():
                      .order_by(Campaign.created_at.desc()).all()):
         items.append({"campaign": campaign, "state": "enrolled" if campaign.id in enrolled_ids else "open"})
     return render_template("catalogue/index.html", lab=lab, items=items,
-                           documents=_documents("catalogue"), terms=_documents("terms"))
+                           documents=_documents("catalogue"), registrations=_documents("registration"),
+                           terms=_documents("terms"))
 
 
 @catalogue_bp.route("/protocol")
