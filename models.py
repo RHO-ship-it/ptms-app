@@ -369,3 +369,4 @@ class PortalDocument(db.Model):
     data = db.Column(db.LargeBinary, nullable=False)
     uploaded_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    year = db.Column(db.Integer, nullable=True)            # année du document (catalogue, registration, instruction)

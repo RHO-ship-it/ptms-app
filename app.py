@@ -20,6 +20,11 @@ def create_app(config_class=Config):
 
     with app.app_context():
         db.create_all()
+        # Base déjà existante : ajoute la colonne « year » si elle manque.
+        from sqlalchemy import inspect as _sa_inspect, text as _sa_text
+        if "year" not in {col["name"] for col in _sa_inspect(db.engine).get_columns("portal_documents")}:
+            db.session.execute(_sa_text("ALTER TABLE portal_documents ADD COLUMN year INTEGER"))
+            db.session.commit()
 
     from models import User
 

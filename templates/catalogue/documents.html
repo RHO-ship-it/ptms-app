@@ -1,42 +1,65 @@
 {% extends "base.html" %}
 {% block title %}Documents{% endblock %}
+
+{% macro doc_table(rows) %}
+<div class="table-responsive"><table class="table align-middle mb-0">
+  <thead><tr><th>Fichier</th><th>Rubrique</th><th>Titre</th><th style="min-width:330px;">Statut / action</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td><code>{{ r.filename }}</code></td>
+    <td>{{ r.label }}</td>
+    <td class="fw-semibold">{{ r.title }}</td>
+    <td>
+      {% if r.doc %}
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <span class="badge text-bg-success">En ligne</span>
+        <span class="small text-muted">{{ (r.doc.size / 1024)|round|int }} Ko · {{ r.doc.uploaded_at.strftime('%d/%m/%Y') if r.doc.uploaded_at else '—' }}</span>
+        <a class="btn btn-sm btn-outline-primary ms-auto" target="_blank" rel="noopener" href="{{ url_for('catalogue.document', doc_id=r.doc.id) }}">Ouvrir</a>
+        <form method="post" action="{{ url_for('catalogue.delete_document', doc_id=r.doc.id) }}" onsubmit="return confirm('Retirer ce document ? Les participants ne le verront plus.');">
+          <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i></button>
+        </form>
+      </div>
+      {% else %}
+      <span class="badge text-bg-warning mb-2">À joindre</span>
+      {% endif %}
+      <form method="post" action="{{ url_for('catalogue.upload_document') }}" enctype="multipart/form-data" class="d-flex gap-2">
+        <input type="hidden" name="kind" value="{{ r.kind }}">
+        <input type="hidden" name="slot" value="{{ r.filename }}">
+        {% if r.year %}<input type="hidden" name="year" value="{{ r.year }}">{% endif %}
+        <input type="file" name="file" accept="application/pdf,.pdf" class="form-control form-control-sm" required>
+        <button class="btn btn-primary btn-sm text-nowrap" type="submit"><i class="bi bi-paperclip me-1"></i>{{ 'Remplacer' if r.doc else 'Joindre' }}</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody></table></div>
+{% endmacro %}
+
 {% block content %}
 <div class="container-fluid px-4 py-4" style="max-width:1100px;">
   <h3 class="fw-bold mb-1"><i class="bi bi-file-earmark-pdf-fill text-danger me-2"></i>Documents</h3>
-  <p class="text-muted mb-4">Dès qu'un PDF est joint, il apparaît dans la page correspondante chez tous les participants. Taille maximale : 16 Mo par fichier.</p>
+  <p class="text-muted mb-3">Dès qu'un PDF est joint, il apparaît chez tous les participants, classé par année. Taille maximale : 16 Mo par fichier.</p>
+
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-4">
+    <span class="fw-semibold me-1">Année :</span>
+    {% for y in years %}
+    <a class="btn btn-sm {{ 'btn-primary' if y == year else 'btn-outline-primary' }}" href="{{ url_for('catalogue.documents', year=y) }}">{{ y }}</a>
+    {% endfor %}
+    <form method="get" action="{{ url_for('catalogue.documents') }}" class="d-flex gap-1 ms-2">
+      <input type="number" name="year" min="2000" max="2100" class="form-control form-control-sm" style="width:100px;" placeholder="Autre…">
+      <button class="btn btn-sm btn-outline-secondary" type="submit">Ouvrir</button>
+    </form>
+  </div>
 
   <div class="card shadow-sm mb-4" style="border-radius:14px;">
-    <div class="table-responsive"><table class="table align-middle mb-0">
-      <thead><tr><th>Fichier</th><th>Rubrique</th><th>Titre</th><th style="min-width:330px;">Statut / action</th></tr></thead>
-      <tbody>
-      {% for r in rows %}
-      <tr>
-        <td><code>{{ r.filename }}</code></td>
-        <td>{{ r.label }}</td>
-        <td class="fw-semibold">{{ r.title }}</td>
-        <td>
-          {% if r.doc %}
-          <div class="d-flex align-items-center gap-2 mb-2">
-            <span class="badge text-bg-success">En ligne</span>
-            <span class="small text-muted">{{ (r.doc.size / 1024)|round|int }} Ko · {{ r.doc.uploaded_at.strftime('%d/%m/%Y') if r.doc.uploaded_at else '—' }}</span>
-            <a class="btn btn-sm btn-outline-primary ms-auto" target="_blank" rel="noopener" href="{{ url_for('catalogue.document', doc_id=r.doc.id) }}">Ouvrir</a>
-            <form method="post" action="{{ url_for('catalogue.delete_document', doc_id=r.doc.id) }}" onsubmit="return confirm('Retirer ce document ? Les participants ne le verront plus.');">
-              <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i></button>
-            </form>
-          </div>
-          {% else %}
-          <span class="badge text-bg-warning mb-2">À joindre</span>
-          {% endif %}
-          <form method="post" action="{{ url_for('catalogue.upload_document') }}" enctype="multipart/form-data" class="d-flex gap-2">
-            <input type="hidden" name="kind" value="{{ r.kind }}">
-            <input type="hidden" name="slot" value="{{ r.filename }}">
-            <input type="file" name="file" accept="application/pdf,.pdf" class="form-control form-control-sm" required>
-            <button class="btn btn-primary btn-sm text-nowrap" type="submit"><i class="bi bi-paperclip me-1"></i>{{ 'Remplacer' if r.doc else 'Joindre' }}</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-      </tbody></table></div>
+    <div class="card-header fw-bold">Documents {{ year }} <span class="small text-muted fw-normal">· Catalogue, Registration sheets, Instruction sheets</span></div>
+    {{ doc_table(rows_year) }}
+  </div>
+
+  <div class="card shadow-sm mb-4" style="border-radius:14px;">
+    <div class="card-header fw-bold">Documents permanents <span class="small text-muted fw-normal">· sans année</span></div>
+    {{ doc_table(rows_fixed) }}
   </div>
 
   <div class="card shadow-sm" style="border-radius:14px;">
@@ -46,7 +69,7 @@
       <div class="d-flex align-items-center justify-content-between gap-2 py-2 {% if not loop.last %}border-bottom{% endif %}">
         <div>
           <div class="fw-semibold">{{ d.title }}</div>
-          <div class="small text-muted">{{ kinds[d.kind] }} · {{ d.filename }} · {{ (d.size / 1024)|round|int }} Ko · {{ d.uploaded_at.strftime('%d/%m/%Y %H:%M') if d.uploaded_at else '—' }}</div>
+          <div class="small text-muted">{{ kinds[d.kind] }}{% if d.year %} · {{ d.year }}{% endif %} · {{ d.filename }} · {{ (d.size / 1024)|round|int }} Ko · {{ d.uploaded_at.strftime('%d/%m/%Y %H:%M') if d.uploaded_at else '—' }}</div>
         </div>
         <div class="d-flex gap-2">
           <a class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener" href="{{ url_for('catalogue.document', doc_id=d.id) }}">Ouvrir</a>
@@ -62,12 +85,15 @@
       <form method="post" action="{{ url_for('catalogue.upload_document') }}" enctype="multipart/form-data" class="row g-2 align-items-end">
         <div class="col-12 col-md-3"><label class="form-label small mb-1">Rubrique</label>
           <select name="kind" class="form-select form-select-sm">{% for k, lbl in kinds.items() %}<option value="{{ k }}">{{ lbl }}</option>{% endfor %}</select></div>
-        <div class="col-12 col-md-3"><label class="form-label small mb-1">Titre (facultatif)</label>
+        <div class="col-6 col-md-1"><label class="form-label small mb-1">Année</label>
+          <input type="number" name="year" min="2000" max="2100" value="{{ year }}" class="form-control form-control-sm"></div>
+        <div class="col-6 col-md-3"><label class="form-label small mb-1">Titre (facultatif)</label>
           <input type="text" name="title" maxlength="200" class="form-control form-control-sm"></div>
-        <div class="col-12 col-md-4"><label class="form-label small mb-1">Fichier PDF</label>
+        <div class="col-12 col-md-3"><label class="form-label small mb-1">Fichier PDF</label>
           <input type="file" name="file" accept="application/pdf,.pdf" class="form-control form-control-sm" required></div>
         <div class="col-12 col-md-2"><button class="btn btn-primary btn-sm w-100" type="submit">Joindre</button></div>
       </form>
+      <div class="form-text">L'année ne sert que pour le Catalogue, les Registration sheets et les Instruction sheets.</div>
     </div>
   </div>
 </div>

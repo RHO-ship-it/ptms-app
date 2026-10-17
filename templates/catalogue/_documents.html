@@ -1,7 +1,9 @@
 {% if documents %}
 <div class="card shadow-sm mb-4" style="border-radius:14px;"><div class="card-body">
   <h6 class="fw-bold mb-3"><i class="bi bi-file-earmark-pdf-fill text-danger me-2"></i>{{ docs_title|default("Documents") }}</h6>
+  {% set ns = namespace(year=none) %}
   {% for d in documents %}
+  {% if d.year and d.year != ns.year %}{% set ns.year = d.year %}<div class="small fw-bold text-uppercase text-muted pt-2 pb-1 {% if not loop.first %}mt-2{% endif %}"><i class="bi bi-calendar3 me-1"></i>{{ d.year }}</div>{% endif %}
   <div class="d-flex align-items-center justify-content-between gap-2 py-2 {% if not loop.last %}border-bottom{% endif %}">
     <div>
       <div class="fw-semibold">{{ d.title }}</div>
