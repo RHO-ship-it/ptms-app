@@ -33,6 +33,24 @@ EXPECTED_DOCS = [
      "title": "Terms and conditions of sale (EN)"},
 ]
 
+def seed_documents():
+    """Charge en base les PDF présents dans documents/ (à la racine du dépôt) s'ils manquent.
+    Nom attendu : le nom du fichier sans accent (ex. Condition_generale_de_vente_TTS_PT.pdf)."""
+    folder = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "documents")
+    for exp in EXPECTED_DOCS:
+        path = os.path.join(folder, secure_filename(exp["filename"]))
+        if not os.path.isfile(path):
+            continue
+        if PortalDocument.query.filter_by(kind=exp["kind"], title=exp["title"]).first():
+            continue
+        with open(path, "rb") as fh:
+            data = fh.read()
+        if not data.startswith(b"%PDF-"):
+            continue
+        db.session.add(PortalDocument(kind=exp["kind"], title=exp["title"], filename=exp["filename"],
+                                      size=len(data), data=data))
+    db.session.commit()
+
 def _documents(kind):
     """Documents d'une rubrique, sans charger leur contenu."""
     return (PortalDocument.query.options(defer(PortalDocument.data))

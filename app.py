@@ -16,6 +16,8 @@ def create_app(config_class=Config):
     db.init_app(app)
     login_manager.init_app(app)
 
+    import models  # noqa: F401  (enregistre toutes les tables avant create_all)
+
     with app.app_context():
         db.create_all()
 
@@ -55,6 +57,15 @@ def create_app(config_class=Config):
     app.register_blueprint(homogeneity_bp, url_prefix="/homogeneity")
     app.register_blueprint(commercial_bp, url_prefix="/commercial")
     app.register_blueprint(catalogue_bp, url_prefix="/catalogue")
+
+    # Recharge les PDF déposés dans documents/ (la base SQLite de Render est remise à zéro à chaque déploiement).
+    from blueprints.catalogue import seed_documents
+    with app.app_context():
+        try:
+            seed_documents()
+        except Exception as exc:  # ne doit jamais empêcher le démarrage
+            db.session.rollback()
+            app.logger.warning("Chargement des documents ignoré : %s", exc)
 
     @app.cli.command("send-reminders")
     def send_reminders_cli():
