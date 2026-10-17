@@ -23,6 +23,16 @@ DOC_KINDS = {"catalogue": "Catalogue des essais d'aptitude", "protocol": "Protoc
              "terms": "Conditions générales de vente"}
 
 
+# Documents attendus dans la page « Documents » (fichier affiché, rubrique, titre).
+EXPECTED_DOCS = [
+    {"filename": "protocole_PT.pdf", "kind": "protocol",
+     "title": "Proficiency Testing General Protocol (ITE 001)"},
+    {"filename": "Condition_générale_de_vente_TTS_PT.pdf", "kind": "terms",
+     "title": "Conditions générales de vente (FR)"},
+    {"filename": "Terms_and_condition_of_sales_TTS_PT.pdf", "kind": "terms",
+     "title": "Terms and conditions of sale (EN)"},
+]
+
 def _documents(kind):
     """Documents d'une rubrique, sans charger leur contenu."""
     return (PortalDocument.query.options(defer(PortalDocument.data))
@@ -85,63 +95,9 @@ def book(campaign_id):
     log_action("create", "EnrollmentRequest", req.id, f"Réservation {campaign.reference} par {lab.code}")
     for role in ("admin", "chef_technique"):
         notify_role(role, f"Nouvelle demande de réservation : {lab.code} pour {campaign.reference}.",
-                    url_for("catalogue.requests"))
+                    url_for("dashboard.index"))
     flash("Votre demande de réservation a été envoyée. Vous serez notifié dès qu'elle sera traitée.", "success")
     return redirect(url_for("catalogue.index"))
-
-
-@catalogue_bp.route("/requests")
-@login_required
-@roles_required("admin", "chef_technique")
-def requests():
-    """Demandes de réservation à traiter (personnel)."""
-    pending = (EnrollmentRequest.query.filter_by(status="pending")
-               .order_by(EnrollmentRequest.created_at.asc()).all())
-    decided = (EnrollmentRequest.query.filter(EnrollmentRequest.status != "pending")
-               .order_by(EnrollmentRequest.decided_at.desc()).limit(20).all())
-    return render_template("catalogue/requests.html", pending=pending, decided=decided)
-
-
-@catalogue_bp.route("/requests/<int:req_id>/<decision>", methods=["POST"])
-@login_required
-@roles_required("admin", "chef_technique")
-def decide(req_id, decision):
-    """Accepte ou refuse une demande. L'acceptation inscrit le laboratoire et crée
-    ses formulaires pour tous les essais de la campagne (comme « Assigner des labos »)."""
-    req = EnrollmentRequest.query.get_or_404(req_id)
-    if decision not in ("approve", "reject"):
-        flash("Décision inconnue.", "danger")
-        return redirect(url_for("catalogue.requests"))
-    if req.status != "pending":
-        flash("Cette demande a déjà été traitée.", "info")
-        return redirect(url_for("catalogue.requests"))
-
-    campaign, lab = req.campaign, req.laboratory
-    note = (request.form.get("note") or "").strip()[:300] or None
-    if decision == "approve":
-        if not CampaignLaboratory.query.filter_by(campaign_id=campaign.id, laboratory_id=lab.id).first():
-            db.session.add(CampaignLaboratory(campaign_id=campaign.id, laboratory_id=lab.id))
-            db.session.flush()
-            for trial in campaign.trials:
-                if not ParticipantForm.query.filter_by(trial_id=trial.id, laboratory_id=lab.id).first():
-                    db.session.add(ParticipantForm(trial_id=trial.id, laboratory_id=lab.id, status="pending"))
-        req.status = "approved"
-        text = f"Votre réservation pour {campaign.reference} est acceptée : vos formulaires sont disponibles."
-        link = url_for("participants.portal")
-    else:
-        req.status = "rejected"
-        text = f"Votre réservation pour {campaign.reference} n'a pas pu être acceptée."
-        if note:
-            text += f" Motif : {note}"
-        link = url_for("catalogue.index")
-    req.decision_note, req.decided_at, req.decided_by = note, datetime.utcnow(), current_user.id
-    db.session.commit()
-    log_action(decision, "EnrollmentRequest", req.id, f"{campaign.reference} / {lab.code}")
-
-    for user in User.query.filter_by(laboratory_id=lab.id, role="participant", active=True).all():
-        notify(user.id, text[:300], link)
-    flash("Demande acceptée : le laboratoire est inscrit." if decision == "approve" else "Demande refusée.", "success")
-    return redirect(url_for("catalogue.requests"))
 
 
 @catalogue_bp.route("/protocol")
@@ -159,9 +115,16 @@ def protocol():
 @login_required
 @roles_required("admin", "chef_technique")
 def documents():
-    """Gestion des PDF du catalogue et du protocole statistique."""
-    sections = [(kind, label, _documents(kind)) for kind, label in DOC_KINDS.items()]
-    return render_template("catalogue/documents.html", sections=sections)
+    """Page « Documents » : documents attendus du portail + autres PDF joints."""
+    rows, used = [], set()
+    for exp in EXPECTED_DOCS:
+        doc = (PortalDocument.query.options(defer(PortalDocument.data))
+               .filter_by(kind=exp["kind"], title=exp["title"]).first())
+        if doc:
+            used.add(doc.id)
+        rows.append({**exp, "label": DOC_KINDS[exp["kind"]], "doc": doc})
+    others = [d for kind in DOC_KINDS for d in _documents(kind) if d.id not in used]
+    return render_template("catalogue/documents.html", rows=rows, others=others, kinds=DOC_KINDS)
 
 
 @catalogue_bp.route("/documents/upload", methods=["POST"])
@@ -181,9 +144,18 @@ def upload_document():
     if not file.filename.lower().endswith(".pdf") or not data.startswith(b"%PDF-"):
         flash("Le fichier doit être un PDF valide.", "danger")
         return redirect(url_for("catalogue.documents"))
-    stem = os.path.splitext(file.filename)[0].strip()
-    title = (request.form.get("title") or "").strip()[:200] or stem[:200] or "Document"
-    safe_name = secure_filename(file.filename) or "document.pdf"
+
+    # Ligne « attendue » : le titre et le nom affiché sont imposés, l'ancien fichier est remplacé.
+    slot = next((e for e in EXPECTED_DOCS
+                 if e["filename"] == request.form.get("slot") and e["kind"] == kind), None)
+    if slot:
+        title, safe_name = slot["title"], slot["filename"]
+        for old in PortalDocument.query.filter_by(kind=kind, title=title).all():
+            db.session.delete(old)
+    else:
+        stem = os.path.splitext(file.filename)[0].strip()
+        title = (request.form.get("title") or "").strip()[:200] or stem[:200] or "Document"
+        safe_name = secure_filename(file.filename) or "document.pdf"
     doc = PortalDocument(kind=kind, title=title, filename=safe_name, size=len(data),
                          data=data, uploaded_by=current_user.id)
     db.session.add(doc)

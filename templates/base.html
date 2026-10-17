@@ -908,11 +908,8 @@
                 <i class="bi bi-building"></i> Laboratoires
             </a>
             {% if current_user.role in ['admin','chef_technique'] %}
-            <a href="{{ url_for('catalogue.requests') }}" class="ptms-nav-link {% if request.endpoint == 'catalogue.requests' %}active{% endif %}">
-                <i class="bi bi-inbox-fill"></i> Demandes de réservation
-            </a>
             <a href="{{ url_for('catalogue.documents') }}" class="ptms-nav-link {% if request.endpoint == 'catalogue.documents' %}active{% endif %}">
-                <i class="bi bi-file-earmark-pdf-fill"></i> Documents PDF
+                <i class="bi bi-file-earmark-pdf-fill"></i> Documents
             </a>
             {% endif %}
         </div>
