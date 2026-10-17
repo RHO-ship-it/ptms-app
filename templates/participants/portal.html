@@ -48,8 +48,8 @@
       </div>
       {% endif %}
       {% if selected_campaign and selected_campaign.report_published %}
-      <a href="{{ url_for('reports.my_report', campaign_id=selected_campaign.id) }}" class="btn btn-success btn-sm d-flex align-items-center gap-2 fw-semibold shadow-sm">
-        <i class="bi bi-file-earmark-pdf"></i>Rapport Final
+      <a href="{{ url_for('reports.my_reports_page') }}" class="btn btn-success btn-sm d-flex align-items-center gap-2 fw-semibold shadow-sm">
+        <i class="bi bi-file-earmark-text"></i>Rapports &amp; certificat
       </a>
       {% endif %}
       <a href="{{ url_for('participants.my_contact_info') }}"
