@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container-fluid px-4 py-4">
   <h3 class="fw-bold mb-1"><i class="bi bi-journal-bookmark-fill text-primary me-2"></i>Catalogue des essais d'aptitude</h3>
-  <p class="text-muted mb-4">Réservez votre participation aux campagnes ouvertes.
+  <p class="text-muted mb-4">Consultez les campagnes ouvertes.
     {% if lab %}Laboratoire <strong>{{ lab.code }}</strong>.{% endif %}</p>
 
   <div class="card shadow-sm mb-4" style="border-radius:14px;"><div class="card-body">
@@ -52,7 +52,6 @@
           <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
             <h5 class="mb-0 fw-bold">{{ c.name }}</h5>
             {% if it.state == 'enrolled' %}<span class="badge text-bg-success">Inscrit</span>
-            {% elif it.state == 'pending' %}<span class="badge text-bg-warning">Demande en attente</span>
             {% else %}<span class="badge text-bg-primary">Ouvert</span>{% endif %}
           </div>
           <div class="text-muted small mb-1"><i class="bi bi-hash"></i> {{ c.reference }}</div>
@@ -65,25 +64,18 @@
             {% if c.trials|length > 5 %}<li class="text-muted">… et {{ c.trials|length - 5 }} autre(s)</li>{% endif %}
           </ul>{% endif %}
           {% if c.description %}<p class="small text-muted">{{ c.description[:160] }}{% if c.description|length > 160 %}…{% endif %}</p>{% endif %}
-          {% if it.rejected and it.state == 'open' %}
-          <div class="alert alert-warning py-2 small mb-2">Votre précédente demande n'a pas été acceptée.{% if it.note %} Motif : {{ it.note }}{% endif %}</div>{% endif %}
           <div class="mt-auto pt-2">
             {% if it.state == 'enrolled' %}
               <a class="btn btn-outline-success w-100" href="{{ url_for('participants.portal', campaign_id=c.id) }}"><i class="bi bi-inbox-fill me-1"></i>Mes formulaires</a>
-            {% elif it.state == 'pending' %}
-              <button class="btn btn-outline-secondary w-100" disabled><i class="bi bi-hourglass-split me-1"></i>En attente de validation</button>
             {% else %}
-              <form method="post" action="{{ url_for('catalogue.book', campaign_id=c.id) }}">
-                <input type="text" name="message" maxlength="300" class="form-control form-control-sm mb-2" placeholder="Message pour l'équipe (facultatif)">
-                <button class="btn btn-primary w-100" type="submit"><i class="bi bi-cart-plus me-1"></i>Réserver</button>
-              </form>
+              <a class="btn btn-primary w-100" href="mailto:C43@ttesting.org?subject={{ ('Participation ' ~ c.reference)|urlencode }}"><i class="bi bi-envelope me-1"></i>Nous contacter pour participer</a>
             {% endif %}
           </div>
         </div>
       </div>
     </div>
     {% else %}
-    <div class="col-12"><div class="text-center text-muted p-5 border rounded-3"><i class="bi bi-journal-x fs-1 d-block mb-2"></i>Aucune campagne ouverte à la réservation pour le moment.</div></div>
+    <div class="col-12"><div class="text-center text-muted p-5 border rounded-3"><i class="bi bi-journal-x fs-1 d-block mb-2"></i>Aucune campagne ouverte pour le moment.</div></div>
     {% endfor %}
   </div>
 </div>

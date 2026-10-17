@@ -6,11 +6,11 @@ from flask import Blueprint, render_template, request, flash, redirect, url_for,
 from flask_login import login_required, current_user
 
 from extensions import db
-from models import Campaign, CampaignLaboratory, ParticipantForm, EnrollmentRequest, User
+from models import Campaign, CampaignLaboratory
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm import defer
 from models import PortalDocument
-from utils import notify, notify_role, log_action
+from utils import log_action
 from blueprints.auth import roles_required
 
 catalogue_bp = Blueprint("catalogue", __name__, template_folder="../templates/catalogue")
@@ -43,61 +43,18 @@ def _documents(kind):
 @login_required
 @roles_required("participant")
 def index():
-    """Catalogue des essais d'aptitude : le participant voit ce qu'il peut réserver."""
+    """Catalogue des essais d'aptitude : le participant consulte les campagnes ouvertes."""
     lab = current_user.laboratory
-    enrolled_ids, requests_by_campaign = set(), {}
+    enrolled_ids = set()
     if lab is not None:
         enrolled_ids = {cl.campaign_id for cl in CampaignLaboratory.query.filter_by(laboratory_id=lab.id)}
-        for req in (EnrollmentRequest.query.filter_by(laboratory_id=lab.id)
-                    .order_by(EnrollmentRequest.created_at.asc()).all()):
-            requests_by_campaign[req.campaign_id] = req  # la plus récente l'emporte
 
     items = []
     for campaign in (Campaign.query.filter(Campaign.status.in_(OPEN_STATUSES))
                      .order_by(Campaign.created_at.desc()).all()):
-        req = requests_by_campaign.get(campaign.id)
-        if campaign.id in enrolled_ids:
-            state = "enrolled"
-        elif req is not None and req.status == "pending":
-            state = "pending"
-        else:
-            state = "open"
-        items.append({"campaign": campaign, "state": state, "rejected": bool(req and req.status == "rejected"),
-                      "note": req.decision_note if req and req.status == "rejected" else None})
+        items.append({"campaign": campaign, "state": "enrolled" if campaign.id in enrolled_ids else "open"})
     return render_template("catalogue/index.html", lab=lab, items=items,
                            documents=_documents("catalogue"), terms=_documents("terms"))
-
-
-@catalogue_bp.route("/<int:campaign_id>/book", methods=["POST"])
-@login_required
-@roles_required("participant")
-def book(campaign_id):
-    """Réserve un essai : crée une demande que l'équipe valide ensuite."""
-    lab = current_user.laboratory
-    campaign = Campaign.query.get_or_404(campaign_id)
-    if lab is None:
-        flash("Votre compte n'est rattaché à aucun laboratoire.", "warning")
-        return redirect(url_for("catalogue.index"))
-    if campaign.status not in OPEN_STATUSES:
-        flash("Cette campagne n'est plus ouverte aux réservations.", "warning")
-        return redirect(url_for("catalogue.index"))
-    if CampaignLaboratory.query.filter_by(campaign_id=campaign.id, laboratory_id=lab.id).first():
-        flash("Votre laboratoire participe déjà à cette campagne.", "info")
-        return redirect(url_for("catalogue.index"))
-    if EnrollmentRequest.query.filter_by(campaign_id=campaign.id, laboratory_id=lab.id, status="pending").first():
-        flash("Une demande est déjà en attente pour cette campagne.", "info")
-        return redirect(url_for("catalogue.index"))
-
-    req = EnrollmentRequest(campaign_id=campaign.id, laboratory_id=lab.id, requested_by=current_user.id,
-                            message=(request.form.get("message") or "").strip()[:300] or None)
-    db.session.add(req)
-    db.session.commit()
-    log_action("create", "EnrollmentRequest", req.id, f"Réservation {campaign.reference} par {lab.code}")
-    for role in ("admin", "chef_technique"):
-        notify_role(role, f"Nouvelle demande de réservation : {lab.code} pour {campaign.reference}.",
-                    url_for("dashboard.index"))
-    flash("Votre demande de réservation a été envoyée. Vous serez notifié dès qu'elle sera traitée.", "success")
-    return redirect(url_for("catalogue.index"))
 
 
 @catalogue_bp.route("/protocol")
