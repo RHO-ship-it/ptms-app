@@ -3,14 +3,13 @@
 {% block content %}
 <div class="container-fluid px-4 py-4" style="max-width:980px;">
   <h3 class="fw-bold mb-1"><i class="bi bi-file-earmark-pdf-fill text-danger me-2"></i>Documents du portail</h3>
-  <p class="text-muted mb-4">Joignez vos PDF au catalogue et au protocole statistique. Dès qu'un PDF est ajouté, il apparaît dans la page correspondante chez tous les participants. Taille maximale : 16 Mo par fichier.</p>
+  <p class="text-muted mb-4">Joignez vos PDF (catalogue, calendrier, protocole, conditions de vente). Dès qu'un PDF est ajouté, il apparaît dans la page correspondante chez tous les participants. Taille maximale : 16 Mo par fichier.</p>
 
   {% for kind, label, docs in sections %}
   <div class="card shadow-sm mb-4" style="border-radius:14px;">
     <div class="card-header fw-bold d-flex justify-content-between align-items-center">
       <span>{{ label }}</span>
-      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('catalogue.protocol') if kind == 'protocol' else url_for('catalogue.requests') }}">
-        {% if kind == 'protocol' %}Voir la page{% else %}Demandes de réservation{% endif %}</a>
+      {% if kind == 'protocol' %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('catalogue.protocol') }}">Voir la page</a>{% endif %}
     </div>
     <div class="card-body">
       {% for d in docs %}

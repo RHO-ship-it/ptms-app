@@ -19,7 +19,8 @@ catalogue_bp = Blueprint("catalogue", __name__, template_folder="../templates/ca
 OPEN_STATUSES = ("draft", "active")
 
 # Rubriques auxquelles l'équipe peut joindre des PDF.
-DOC_KINDS = {"catalogue": "Catalogue des essais d'aptitude", "protocol": "Protocole statistique"}
+DOC_KINDS = {"catalogue": "Catalogue des essais d'aptitude", "protocol": "Protocole statistique",
+             "terms": "Conditions générales de vente"}
 
 
 def _documents(kind):
@@ -53,7 +54,8 @@ def index():
             state = "open"
         items.append({"campaign": campaign, "state": state, "rejected": bool(req and req.status == "rejected"),
                       "note": req.decision_note if req and req.status == "rejected" else None})
-    return render_template("catalogue/index.html", lab=lab, items=items, documents=_documents("catalogue"))
+    return render_template("catalogue/index.html", lab=lab, items=items,
+                           documents=_documents("catalogue"), terms=_documents("terms"))
 
 
 @catalogue_bp.route("/<int:campaign_id>/book", methods=["POST"])

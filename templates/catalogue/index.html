@@ -6,7 +6,37 @@
   <p class="text-muted mb-4">Réservez votre participation aux campagnes ouvertes.
     {% if lab %}Laboratoire <strong>{{ lab.code }}</strong>.{% endif %}</p>
 
+  <div class="card shadow-sm mb-4" style="border-radius:14px;"><div class="card-body">
+    <h5 class="fw-bold">Proficiency Testing: Improving Laboratory Performance and Client Confidence</h5>
+    <p>Proficiency testing is a way to ensure the validity of routine laboratory test results by comparing them to pre-established criteria within the framework of inter-laboratory comparisons.</p>
+    <div class="row g-4">
+      <div class="col-12 col-lg-6">
+        <h6 class="fw-bold">Advantages of proficiency testing</h6>
+        <ul class="mb-3">
+          <li><strong>Performance evaluation:</strong> an analysis of the accuracy and reliability of your results.</li>
+          <li><strong>Strengthening customer trust:</strong> a guarantee of the quality of services provided.</li>
+          <li><strong>Problem identification:</strong> a detection of potential gaps in the laboratory processes.</li>
+        </ul>
+        <h6 class="fw-bold">Services offered by TTS PT</h6>
+        <p class="mb-0">TTS PT organizes proficiency testing campaigns in the textiles/apparel and leather sectors, offering programs tailored to various methods to meet the diverse needs of participants. Our accreditation body EGAC is a signatory to the ILAC Mutual Recognition Arrangement (ILAC MRA), ensuring global recognition of our proficiency testing programs. For complete information on the organization of these tests, please consult our <a href="{{ url_for('catalogue.protocol') }}">TTS PT protocol</a>.</p>
+      </div>
+      <div class="col-12 col-lg-6">
+        <h6 class="fw-bold">Do you wish to participate?</h6>
+        <p class="mb-1">If you wish to:</p>
+        <ul class="mb-2">
+          <li>participate in one or more campaigns,</li>
+          <li>obtain additional information,</li>
+          <li>propose a new type of test,</li>
+        </ul>
+        <p class="mb-3">feel free to contact us: <a href="mailto:C43@ttesting.org">C43@ttesting.org</a></p>
+        <h6 class="fw-bold">Terms of sale</h6>
+        <p class="mb-0">All complaints or appeals will be handled promptly by TTS PT, in accordance with the procedure outlined in our protocol. For any complaints, requests, or suggestions, please contact us at <a href="mailto:HHA@ttesting.org">HHA@ttesting.org</a>.</p>
+      </div>
+    </div>
+  </div></div>
+
   {% include "catalogue/_documents.html" %}
+  {% with documents=terms, docs_title="Conditions générales de vente / Terms and conditions of sale" %}{% include "catalogue/_documents.html" %}{% endwith %}
 
   <div class="mb-4" style="max-width:520px;">
     <div class="input-group"><span class="input-group-text"><i class="bi bi-search"></i></span>
