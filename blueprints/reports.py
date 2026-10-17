@@ -2,10 +2,10 @@ import os
 import io
 from datetime import datetime
 
-from flask import Blueprint, render_template, request, send_file, current_app, flash, redirect, url_for
+from flask import Blueprint, render_template, request, send_file, current_app, flash, redirect, url_for, abort
 from flask_login import login_required, current_user
 
-from models import Campaign
+from models import Campaign, Trial, ParticipantForm
 from utils import z_score_interpretation, log_action, robust_stats, qualitative_consensus
 from blueprints.auth import roles_required
 
@@ -89,6 +89,290 @@ def my_report(campaign_id):
         return redirect(url_for("dashboard.index"))
     rows = [row for row in _gather_report_rows(campaign) if row["lab"] == lab.code]
     return _export_pdf(campaign, rows)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  ESPACE PARTICIPANT : rapports et certificats (comme GSD / BIPEA)
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _participant_lab():
+    """Laboratoire du participant connecté (ou None)."""
+    return getattr(current_user, "laboratory", None)
+
+
+def _lab_campaigns(lab):
+    """Campagnes auxquelles le laboratoire est inscrit (au moins un formulaire attribué)."""
+    return (Campaign.query.join(Trial, Trial.campaign_id == Campaign.id)
+            .join(ParticipantForm, ParticipantForm.trial_id == Trial.id)
+            .filter(ParticipantForm.laboratory_id == lab.id)
+            .distinct().order_by(Campaign.created_at.desc()).all())
+
+
+def _lab_submissions(campaign, lab):
+    """Soumissions du laboratoire pour cette campagne, avec leur essai."""
+    out = []
+    for trial in campaign.trials:
+        for form in trial.forms:
+            if form.laboratory_id == lab.id and form.submission:
+                out.append((trial, form.submission))
+    return out
+
+
+def _published_campaign_for_lab(campaign_id):
+    """Campagne publiée à laquelle le participant connecté est inscrit, sinon redirection."""
+    campaign = Campaign.query.get_or_404(campaign_id)
+    lab = _participant_lab()
+    if lab is None:
+        flash("Votre compte n'est rattaché à aucun laboratoire.", "warning")
+        return None, None, redirect(url_for("dashboard.index"))
+    if not campaign.report_published:
+        flash("Le rapport de cette campagne n'est pas encore publié.", "warning")
+        return None, None, redirect(url_for("reports.my_reports_page"))
+    if campaign.id not in {c.id for c in _lab_campaigns(lab)}:
+        abort(403)
+    return campaign, lab, None
+
+
+@reports_bp.route("/mes-rapports")
+@login_required
+@roles_required("participant")
+def my_reports_page():
+    """Page « Mes rapports » : campagnes en cours, terminées et certificats."""
+    lab = _participant_lab()
+    ongoing, completed, certificates = [], [], []
+    if lab is not None:
+        for campaign in _lab_campaigns(lab):
+            subs = _lab_submissions(campaign, lab)
+            item = {
+                "campaign": campaign,
+                "trials": len(campaign.trials),
+                "submitted": len(subs),
+                "has_uncertainty": any(
+                    t.trial_type == "quantitative" and s.uncertainty is not None for t, s in subs),
+            }
+            if campaign.report_published:
+                completed.append(item)
+                if subs:
+                    item["share_url"] = _external_url(
+                        "reports.shared_certificate", token=_certificate_token(lab, campaign))
+                    certificates.append(item)
+            else:
+                ongoing.append(item)
+    return render_template("participants/reports.html", lab=lab, ongoing=ongoing,
+                           completed=completed, certificates=certificates)
+
+
+@reports_bp.route("/campaign/<int:campaign_id>/my-global-report")
+@login_required
+@roles_required("participant")
+def my_global_report(campaign_id):
+    """Rapport global (Word) : tous les résultats, laboratoires identifiés par leur code seul."""
+    campaign, lab, redirection = _published_campaign_for_lab(campaign_id)
+    if redirection:
+        return redirection
+    return _export_full_report_word(campaign, anonymous=True, own_lab=lab)
+
+
+@reports_bp.route("/campaign/<int:campaign_id>/my-uncertainty-report")
+@login_required
+@roles_required("participant")
+def my_uncertainty_report(campaign_id):
+    """Rapport d'incertitude (PDF) : U(x) déclarée, valeur assignée, score En (ISO 13528 §9.3)."""
+    campaign, lab, redirection = _published_campaign_for_lab(campaign_id)
+    if redirection:
+        return redirection
+    rows = [(t, s) for t, s in _lab_submissions(campaign, lab)
+            if t.trial_type == "quantitative" and s.uncertainty is not None]
+    if not rows:
+        flash("Aucune incertitude n'a été déclarée pour cette campagne.", "warning")
+        return redirect(url_for("reports.my_reports_page"))
+    return _uncertainty_pdf(campaign, lab, rows)
+
+
+@reports_bp.route("/campaign/<int:campaign_id>/my-certificate")
+@login_required
+@roles_required("participant")
+def my_certificate(campaign_id):
+    """Certificat de participation (PDF) du laboratoire pour cette campagne."""
+    campaign, lab, redirection = _published_campaign_for_lab(campaign_id)
+    if redirection:
+        return redirection
+    subs = _lab_submissions(campaign, lab)
+    if not subs:
+        flash("Aucun résultat soumis : aucun certificat de participation n'est émis.", "warning")
+        return redirect(url_for("reports.my_reports_page"))
+    verify_url = _external_url("reports.shared_certificate", token=_certificate_token(lab, campaign))
+    return _certificate_pdf(campaign, lab, subs, verify_url, as_attachment=True)
+
+
+@reports_bp.route("/certificate/shared/<token>")
+def shared_certificate(token):
+    """Lien partageable (sans connexion) vers un certificat : la signature du lien
+    garantit qu'il n'a pas été modifié ; il n'expose que le certificat lui-même."""
+    from itsdangerous import BadSignature
+    try:
+        data = _certificate_serializer().loads(token)
+        campaign = Campaign.query.get(int(data["c"]))
+        from models import Laboratory
+        lab = Laboratory.query.get(int(data["l"]))
+    except (BadSignature, KeyError, ValueError, TypeError):
+        abort(404)
+    if campaign is None or lab is None or not campaign.report_published:
+        abort(404)
+    subs = _lab_submissions(campaign, lab)
+    if not subs:
+        abort(404)
+    return _certificate_pdf(campaign, lab, subs, _external_url("reports.shared_certificate", token=token),
+                            as_attachment=False)
+
+
+def _certificate_serializer():
+    from itsdangerous import URLSafeSerializer
+    return URLSafeSerializer(current_app.config["SECRET_KEY"], salt="ptms-certificate")
+
+
+def _certificate_token(lab, campaign):
+    return _certificate_serializer().dumps({"l": lab.id, "c": campaign.id})
+
+
+def _external_url(endpoint, **values):
+    """URL absolue, en https dès que le site n'est pas servi en local (Render termine le TLS)."""
+    url = url_for(endpoint, _external=True, **values)
+    host = request.host.split(":")[0]
+    if url.startswith("http://") and host not in ("localhost", "127.0.0.1"):
+        url = "https://" + url[len("http://"):]
+    return url
+
+
+def _certificate_pdf(campaign, lab, subs, verify_url, as_attachment):
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.graphics.barcode import qr
+    from reportlab.graphics.shapes import Drawing
+    from xml.sax.saxutils import escape
+
+    buf = io.BytesIO()
+    page = landscape(A4)
+
+    def _frame(canvas, _doc):
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#1F4E78"))
+        canvas.setLineWidth(3)
+        canvas.rect(1 * cm, 1 * cm, page[0] - 2 * cm, page[1] - 2 * cm)
+        canvas.setLineWidth(0.8)
+        canvas.rect(1.3 * cm, 1.3 * cm, page[0] - 2.6 * cm, page[1] - 2.6 * cm)
+        canvas.restoreState()
+
+    doc = SimpleDocTemplate(buf, pagesize=page, topMargin=2 * cm, bottomMargin=1.8 * cm,
+                            leftMargin=2 * cm, rightMargin=2 * cm)
+    center = ParagraphStyle("c", alignment=TA_CENTER, fontSize=11, leading=16)
+    title = ParagraphStyle("t", alignment=TA_CENTER, fontSize=28, leading=32,
+                           textColor=colors.HexColor("#1F4E78"), fontName="Helvetica-Bold")
+    labname = ParagraphStyle("l", alignment=TA_CENTER, fontSize=20, leading=24, fontName="Helvetica-Bold")
+    small = ParagraphStyle("s", alignment=TA_CENTER, fontSize=8, leading=11, textColor=colors.grey)
+
+    number = f"{campaign.reference}/{lab.code}"
+    issued = (campaign.end_date or datetime.now()).strftime("%d/%m/%Y")
+    el = [
+        Paragraph("CERTIFICATE OF PARTICIPATION", title),
+        Paragraph("Certificat de participation — essais d'aptitude inter-laboratoires (ISO/IEC 17043)", center),
+        Spacer(1, 0.7 * cm),
+        Paragraph("This is to certify that / Il est certifié que", center),
+        Spacer(1, 0.3 * cm),
+        Paragraph(escape(lab.name), labname),
+        Paragraph(f"Code laboratoire : {escape(lab.code)}", center),
+        Spacer(1, 0.4 * cm),
+        Paragraph(
+            f"a participé au programme d'essais d'aptitude <b>{escape(campaign.name)}</b> "
+            f"(réf. {escape(campaign.reference)}), pour les essais suivants :", center),
+        Spacer(1, 0.3 * cm),
+    ]
+    tests = Table([["Essai", "Paramètre", "Résultat soumis le"]] + [
+        [t.name, t.parameter or "-",
+         s.submitted_at.strftime("%d/%m/%Y") if s.submitted_at else "-"] for t, s in subs],
+        hAlign="CENTER", repeatRows=1)
+    tests.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.white]),
+    ]))
+    el.append(tests)
+    el.append(Spacer(1, 0.4 * cm))
+
+    widget = qr.QrCodeWidget(verify_url)
+    x0, y0, x1, y1 = widget.getBounds()
+    size = 2.6 * cm
+    drawing = Drawing(size, size, transform=[size / (x1 - x0), 0, 0, size / (y1 - y0), 0, 0])
+    drawing.add(widget)
+    footer = Table([[drawing, Paragraph(
+        f"Certificat n° <b>{escape(number)}</b><br/>Date d'émission : {issued}<br/>"
+        "Scannez le code pour vérifier ce certificat en ligne.", ParagraphStyle("f", fontSize=9, leading=13))]],
+        colWidths=[3 * cm, 10 * cm], hAlign="CENTER")
+    el.append(footer)
+    el.append(Spacer(1, 0.2 * cm))
+    el.append(Paragraph(
+        "Ce certificat atteste la participation du laboratoire. Il ne constitue pas une évaluation de sa performance, "
+        "qui figure dans le rapport individuel.", small))
+    doc.build(el, onFirstPage=_frame, onLaterPages=_frame)
+    buf.seek(0)
+    safe = f"certificat_{campaign.reference}_{lab.code}.pdf".replace("/", "-")
+    return send_file(buf, as_attachment=as_attachment, download_name=safe, mimetype="application/pdf")
+
+
+def _uncertainty_pdf(campaign, lab, rows):
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), topMargin=1.5 * cm, bottomMargin=1.5 * cm)
+    styles = getSampleStyleSheet()
+    el = [
+        Paragraph(f"Rapport d'incertitude : {campaign.reference} — {campaign.name}", styles["Title"]),
+        Paragraph(f"Laboratoire {lab.code} — généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles["Normal"]),
+        Spacer(1, 0.4 * cm),
+    ]
+
+    def fmt(v):
+        return "-" if v is None else f"{v:g}"
+
+    data = [["Essai", "Unité", "Valeur", "U(x) déclarée", "Valeur assignée", "Z-score", "En", "Évaluation En"]]
+    for trial, sub in rows:
+        if sub.en_score is None:
+            verdict = "-"
+        else:
+            verdict = "Satisfaisant (|En| ≤ 1)" if abs(sub.en_score) <= 1 else "Non satisfaisant (|En| > 1)"
+        data.append([trial.name, trial.unit or "-", fmt(sub.value), fmt(sub.uncertainty),
+                     fmt(trial.target_value), fmt(sub.z_score),
+                     "-" if sub.en_score is None else f"{sub.en_score:.2f}", verdict])
+    table = Table(data, repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.white]),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    el.append(table)
+    el.append(Spacer(1, 0.4 * cm))
+    el.append(Paragraph(
+        "Le score En compare l'écart entre le résultat du laboratoire et la valeur assignée à l'incertitude élargie "
+        "combinée (ISO 13528 §9.3). |En| ≤ 1 indique que le résultat est compatible avec la valeur assignée "
+        "compte tenu de l'incertitude déclarée.", styles["Normal"]))
+    doc.build(el)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True,
+                     download_name=f"rapport_incertitude_{campaign.reference}.pdf".replace("/", "-"),
+                     mimetype="application/pdf")
 
 
 @reports_bp.route("/campaign/<int:campaign_id>/export-fte/<template>")
@@ -394,13 +678,20 @@ def _export_fte_workbook(campaign, template):
 # Rapport final complet au format Word (structure inspirée du rapport TTS)
 # ---------------------------------------------------------------------------
 
-def _export_full_report_word(campaign):
+def _export_full_report_word(campaign, anonymous=False, own_lab=None):
     from docx import Document
     from docx.shared import Pt, Cm, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.enum.table import WD_TABLE_ALIGNMENT
 
     doc = Document()
+
+    def _lab_label(lab):
+        """Code du laboratoire ; marqué « (vous) » pour le laboratoire du lecteur."""
+        label = lab.code
+        if own_lab is not None and lab.id == own_lab.id:
+            label += " (vous)"
+        return label
 
     # Style de base
     normal = doc.styles["Normal"]
@@ -478,7 +769,11 @@ def _export_full_report_word(campaign):
     doc.add_heading("5) Participants", level=1)
     doc.add_paragraph(f"{len(campaign.laboratories)} laboratoire(s) ont participé à cette campagne :")
     for cl in campaign.laboratories:
-        doc.add_paragraph(f"{cl.laboratory.code} — {cl.laboratory.name}", style="List Bullet")
+        if anonymous:
+            # Version participant : codes uniquement, jamais les noms des laboratoires.
+            doc.add_paragraph(_lab_label(cl.laboratory), style="List Bullet")
+        else:
+            doc.add_paragraph(f"{cl.laboratory.code} — {cl.laboratory.name}", style="List Bullet")
 
     # ----- 6. Statistics & Results per trial -----
     doc.add_heading("6) Statistics and Results", level=1)
@@ -526,7 +821,7 @@ def _export_full_report_word(campaign):
                     total_unsatisfactory += 1
 
                 cells = res_table.add_row().cells
-                cells[0].text = s.form.laboratory.code
+                cells[0].text = _lab_label(s.form.laboratory)
                 cells[1].text = str(s.value) if s.value is not None else "-"
                 cells[2].text = str(s.z_score) if s.z_score is not None else "-"
                 cells[3].text = interp
@@ -561,7 +856,7 @@ def _export_full_report_word(campaign):
                     conform_label = "-"
 
                 cells = res_table.add_row().cells
-                cells[0].text = s.form.laboratory.code
+                cells[0].text = _lab_label(s.form.laboratory)
                 cells[1].text = s.qualitative_result or "-"
                 cells[2].text = conform_label
                 cells[3].text = "Oui" if s.validated else "Non"
@@ -606,5 +901,5 @@ def _export_full_report_word(campaign):
 
     log_action("export", "Campaign", campaign.id, f"Export rapport complet Word de {campaign.reference}")
     return send_file(buf, as_attachment=True,
-                      download_name=f"rapport_complet_{campaign.reference}.docx",
+                      download_name=f"rapport_{'global' if anonymous else 'complet'}_{campaign.reference}.docx",
                       mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
