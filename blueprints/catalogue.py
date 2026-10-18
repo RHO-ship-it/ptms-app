@@ -1,5 +1,6 @@
 import io
 import os
+import re
 from datetime import datetime
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, send_file
@@ -33,9 +34,6 @@ YEARLY_DOCS = [
     ("registration", "Registration sheet – Textile", "Registration_sheet_Textile"),
     ("registration", "Registration sheet – Cuir", "Registration_sheet_Cuir"),
     ("registration", "Registration sheet – Huile d'olive", "Registration_sheet_Huile_olive"),
-    ("instruction", "Instruction sheet – Textile", "Instruction_sheet_Textile"),
-    ("instruction", "Instruction sheet – Cuir", "Instruction_sheet_Cuir"),
-    ("instruction", "Instruction sheet – Huile d'olive", "Instruction_sheet_Huile_olive"),
 ]
 
 # Documents permanents (sans année).
@@ -49,10 +47,54 @@ FIXED_DOCS = [
 ]
 
 
+# Packs (campagnes) annoncés dans le catalogue : une feuille d'instructions par pack.
+# Les campagnes créées dans PTMS (TTS-T2602…) et les packs déjà documentés s'y ajoutent.
+PACKS = {
+    2027: [
+        ("TTS-A2701", "Olive oil – virgin olive oil, new harvest"),
+        ("TTS-T2701", "Textile – Pack 1 : colour fastness, dimensional stability, pH & mechanical"),
+        ("TTS-T2702", "Textile – Pack 2 : colour fastness, fibre composition, abrasion & mechanical"),
+        ("TTS-L2701", "Leather & footwear – one annual round"),
+        ("TTS-T2703", "Textile – Pack 3 : colour fastness, tensile, tear & pilling"),
+    ],
+}
+_PACK_RE = re.compile(r"^TTS-[A-Z](\d{2})\d{2}$")
+_PACK_PREFIX = "Instruction sheet – "
+
+
+def pack_year(code):
+    """Année d'un pack d'après son code (TTS-T2701 → 2027), sinon None."""
+    m = _PACK_RE.match(code or "")
+    return 2000 + int(m.group(1)) if m else None
+
+
+def pack_scopes():
+    """{code du pack: description}, d'après le catalogue puis les campagnes de la base."""
+    scopes = {code: label for packs in PACKS.values() for code, label in packs}
+    for ref, name in db.session.query(Campaign.reference, Campaign.name):
+        if pack_year(ref):
+            scopes.setdefault(ref, name)
+    return scopes
+
+
+def pack_docs(year):
+    """Une feuille d'instructions attendue par pack de l'année (catalogue + campagnes + déjà joints)."""
+    scopes = {code: label for code, label in PACKS.get(year, [])}
+    for code, label in pack_scopes().items():
+        if pack_year(code) == year:
+            scopes.setdefault(code, label)
+    for (title,) in db.session.query(PortalDocument.title).filter_by(kind="instruction", year=year):
+        if title.startswith(_PACK_PREFIX) and pack_year(title[len(_PACK_PREFIX):]):
+            scopes.setdefault(title[len(_PACK_PREFIX):], "")
+    return [{"filename": f"Instruction_sheet_{code}.pdf", "kind": "instruction", "year": year,
+             "title": _PACK_PREFIX + code, "scope": scopes[code]} for code in sorted(scopes)]
+
+
 def yearly_docs(year):
-    """Documents attendus pour une année donnée (nom de fichier et titre portent l'année)."""
-    return [{"filename": f"{base}_{year}.pdf", "kind": kind, "title": f"{label} {year}", "year": year}
+    """Documents attendus pour une année : catalogue, registration sheets, une feuille par pack."""
+    docs = [{"filename": f"{base}_{year}.pdf", "kind": kind, "title": f"{label} {year}", "year": year}
             for kind, label, base in YEARLY_DOCS]
+    return docs + pack_docs(year)
 
 
 def _valid_year(value):
@@ -79,6 +121,11 @@ def seed_documents():
     specs = list(FIXED_DOCS)
     for year in range(2024, current + 4):
         specs += yearly_docs(year)
+    for name in os.listdir(folder):          # feuilles d'instructions : un fichier par pack
+        m = re.match(r"^Instruction_sheet_(TTS-[A-Z]\d{4})\.pdf$", name)
+        if m and pack_year(m.group(1)):
+            specs.append({"filename": name, "kind": "instruction", "year": pack_year(m.group(1)),
+                          "title": _PACK_PREFIX + m.group(1)})
     for exp in specs:
         path = os.path.join(folder, secure_filename(exp["filename"]))
         if not os.path.isfile(path):
@@ -123,7 +170,8 @@ def index():
 @login_required
 def instructions():
     """Feuilles d'instructions : PDF joints par l'équipe, affichés tels quels (classés par année)."""
-    return render_template("catalogue/instructions.html", documents=_documents("instruction"))
+    return render_template("catalogue/instructions.html", documents=_documents("instruction"),
+                           scopes={_PACK_PREFIX + code: label for code, label in pack_scopes().items()})
 
 
 @catalogue_bp.route("/protocol")
@@ -156,8 +204,11 @@ def documents():
     known = {(e["kind"], e["title"]) for y in years for e in yearly_docs(y)}
     known |= {(e["kind"], e["title"]) for e in FIXED_DOCS}
     others = [d for kind in DOC_KINDS for d in _documents(kind) if (d.kind, d.title) not in known]
+    year_rows = build(yearly_docs(year))
+    sections = [{"kind": k, "label": DOC_KINDS[k], "rows": [r for r in year_rows if r["kind"] == k]}
+                for k in YEARLY_KINDS]
     return render_template("catalogue/documents.html", year=year, years=years, kinds=DOC_KINDS,
-                           rows_year=build(yearly_docs(year)), rows_fixed=build(FIXED_DOCS), others=others)
+                           sections=sections, rows_fixed=build(FIXED_DOCS), others=others)
 
 
 @catalogue_bp.route("/documents/upload", methods=["POST"])
@@ -188,6 +239,14 @@ def upload_document():
         title, safe_name, doc_year = slot["title"], slot["filename"], slot["year"]
         for old in PortalDocument.query.filter_by(kind=kind, title=title).all():
             db.session.delete(old)
+    elif kind == "instruction" and (request.form.get("pack") or "").strip():
+        pack = request.form.get("pack").strip().upper()
+        if not pack_year(pack):
+            flash("Code de pack invalide (exemple : TTS-T2701).", "danger")
+            return back
+        title, safe_name, doc_year = _PACK_PREFIX + pack, f"Instruction_sheet_{pack}.pdf", pack_year(pack)
+        for old in PortalDocument.query.filter_by(kind=kind, title=title).all():
+            db.session.delete(old)
     else:
         stem = os.path.splitext(file.filename)[0].strip()
         title = (request.form.get("title") or "").strip()[:200] or stem[:200] or "Document"
@@ -199,7 +258,7 @@ def upload_document():
     db.session.commit()
     log_action("create", "PortalDocument", doc.id, f"PDF « {title} » ajouté à : {DOC_KINDS[kind]}")
     flash(f"« {title} » est maintenant visible par les participants.", "success")
-    return back
+    return redirect(url_for("catalogue.documents", year=doc_year or year))
 
 
 @catalogue_bp.route("/documents/<int:doc_id>")

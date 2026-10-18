@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Documents{% endblock %}
 
-{% macro doc_table(rows) %}
+{% macro doc_table(rows, show_kind=True) %}
 <div class="table-responsive"><table class="table align-middle mb-0">
-  <thead><tr><th>Fichier</th><th>Rubrique</th><th>Titre</th><th style="min-width:330px;">Statut / action</th></tr></thead>
+  <thead><tr><th>Fichier</th>{% if show_kind %}<th>Rubrique</th>{% endif %}<th>Titre</th><th style="min-width:330px;">Statut / action</th></tr></thead>
   <tbody>
   {% for r in rows %}
   <tr>
     <td><code>{{ r.filename }}</code></td>
-    <td>{{ r.label }}</td>
-    <td class="fw-semibold">{{ r.title }}</td>
+    {% if show_kind %}<td>{{ r.label }}</td>{% endif %}
+    <td><span class="fw-semibold">{{ r.title }}</span>{% if r.scope %}<div class="small text-muted">{{ r.scope }}</div>{% endif %}</td>
     <td>
       {% if r.doc %}
       <div class="d-flex align-items-center gap-2 mb-2">
@@ -52,10 +52,17 @@
     </form>
   </div>
 
+  {% for s in sections %}
+  {% set done = s.rows|selectattr('doc')|list|length %}
   <div class="card shadow-sm mb-4" style="border-radius:14px;">
-    <div class="card-header fw-bold">Documents {{ year }} <span class="small text-muted fw-normal">· Catalogue, Registration sheets, Instruction sheets</span></div>
-    {{ doc_table(rows_year) }}
+    <div class="card-header d-flex align-items-center justify-content-between gap-2">
+      <span class="fw-bold">{{ loop.index }}. {{ s.label }} {{ year }}
+        {% if s.kind == 'instruction' %}<span class="small text-muted fw-normal">· une feuille par pack</span>{% endif %}</span>
+      <span class="badge {{ 'text-bg-success' if s.rows and done == s.rows|length else 'text-bg-secondary' }}">{{ done }} / {{ s.rows|length }} en ligne</span>
+    </div>
+    {% if s.rows %}{{ doc_table(s.rows, False) }}{% else %}<div class="p-3 text-muted">Aucun pack pour {{ year }} : joignez une feuille avec le code du pack (formulaire en bas de page).</div>{% endif %}
   </div>
+  {% endfor %}
 
   <div class="card shadow-sm mb-4" style="border-radius:14px;">
     <div class="card-header fw-bold">Documents permanents <span class="small text-muted fw-normal">· sans année</span></div>
@@ -87,13 +94,15 @@
           <select name="kind" class="form-select form-select-sm">{% for k, lbl in kinds.items() %}<option value="{{ k }}">{{ lbl }}</option>{% endfor %}</select></div>
         <div class="col-6 col-md-1"><label class="form-label small mb-1">Année</label>
           <input type="number" name="year" min="2000" max="2100" value="{{ year }}" class="form-control form-control-sm"></div>
-        <div class="col-6 col-md-3"><label class="form-label small mb-1">Titre (facultatif)</label>
+        <div class="col-6 col-md-2"><label class="form-label small mb-1">Code du pack</label>
+          <input type="text" name="pack" maxlength="20" placeholder="TTS-T2701" class="form-control form-control-sm"></div>
+        <div class="col-12 col-md-2"><label class="form-label small mb-1">Titre (facultatif)</label>
           <input type="text" name="title" maxlength="200" class="form-control form-control-sm"></div>
-        <div class="col-12 col-md-3"><label class="form-label small mb-1">Fichier PDF</label>
+        <div class="col-12 col-md-2"><label class="form-label small mb-1">Fichier PDF</label>
           <input type="file" name="file" accept="application/pdf,.pdf" class="form-control form-control-sm" required></div>
-        <div class="col-12 col-md-2"><button class="btn btn-primary btn-sm w-100" type="submit">Joindre</button></div>
+        <div class="col-12 col-md-1"><button class="btn btn-primary btn-sm w-100" type="submit">Joindre</button></div>
       </form>
-      <div class="form-text">L'année ne sert que pour le Catalogue, les Registration sheets et les Instruction sheets.</div>
+      <div class="form-text">L'année sert au Catalogue, aux Registration sheets et aux Feuilles d'instructions. Le code du pack (feuille d'instructions uniquement) fixe aussi l'année : TTS-T2701 → 2027.</div>
     </div>
   </div>
 </div>
