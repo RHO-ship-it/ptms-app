@@ -967,6 +967,9 @@
             <a href="{{ url_for('catalogue.protocol') }}" class="ptms-nav-link {% if request.endpoint == 'catalogue.protocol' %}active{% endif %}">
                 <i class="bi bi-bar-chart-line-fill"></i> Protocole statistique
             </a>
+            <a href="{{ url_for('catalogue.instructions') }}" class="ptms-nav-link {% if request.endpoint == 'catalogue.instructions' %}active{% endif %}">
+                <i class="bi bi-card-checklist"></i> Feuilles d'instructions
+            </a>
             <a href="{{ url_for('participants.my_contact_info') }}" class="ptms-nav-link {% if request.endpoint and 'contact' in request.endpoint %}active{% endif %}">
                 <i class="bi bi-person-lines-fill"></i> Mes coordonnées
             </a>

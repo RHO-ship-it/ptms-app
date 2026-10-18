@@ -21,7 +21,7 @@ OPEN_STATUSES = ("draft", "active")
 
 # Rubriques auxquelles l'équipe peut joindre des PDF.
 DOC_KINDS = {"catalogue": "Catalogue général", "registration": "Registration sheets",
-             "instruction": "Instruction sheets",
+             "instruction": "Feuilles d'instructions",
              "protocol": "Protocole statistique", "terms": "Conditions générales de vente"}
 
 # Rubriques classées par année : un jeu de documents par année.
@@ -116,7 +116,14 @@ def index():
         items.append({"campaign": campaign, "state": "enrolled" if campaign.id in enrolled_ids else "open"})
     return render_template("catalogue/index.html", lab=lab, items=items,
                            documents=_documents("catalogue"), registrations=_documents("registration"),
-                           instructions=_documents("instruction"), terms=_documents("terms"))
+                           terms=_documents("terms"))
+
+
+@catalogue_bp.route("/instructions")
+@login_required
+def instructions():
+    """Feuilles d'instructions : PDF joints par l'équipe, affichés tels quels (classés par année)."""
+    return render_template("catalogue/instructions.html", documents=_documents("instruction"))
 
 
 @catalogue_bp.route("/protocol")
