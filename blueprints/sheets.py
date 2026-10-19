@@ -6,7 +6,9 @@ le participant remplit les cellules jaunes comme dans le classeur Excel. À l'en
 alimentent les « Submission » existantes, donc les statistiques (z-score, En…) restent inchangées.
 """
 import json
+import os
 import re
+import statistics
 from datetime import datetime
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for
@@ -20,7 +22,8 @@ from blueprints.auth import roles_required
 sheets_bp = Blueprint("sheets", __name__, template_folder="../templates/sheets")
 
 KINDS = {"quantitative": "Quantitatif (valeurs numériques)", "qualitative": "Qualitatif (notes / classes)",
-         "solidite": "Solidité des couleurs (une note par colorant)"}
+         "solidite": "Solidité des couleurs (une note par colorant)",
+         "sensory": "Analyse sensorielle (panel de dégustateurs)"}
 COL_TYPES = {"number": "Nombre", "text": "Texte", "select": "Liste de choix", "date": "Date",
              "mean": "Moyenne (calculée)", "fixed": "Valeur de la ligne (non modifiable)"}
 COL_ROLES = {"result": "Résultat", "final": "Résultat final", "dye": "Colorant (solidité)",
@@ -33,6 +36,28 @@ IDENT_FIELDS = [("country", "Country"), ("accreditation", "ISO 17025 Accreditati
                 ("storage", "Sample Storage Conditions"), ("storage_temp", "Storage Temperature (°C)"),
                 ("remarks", "General Remarks")]
 DEFAULT_IDENT = ["country", "accreditation", "submission_date", "reception_date", "samples_tested", "remarks"]
+SENSORY_DEFAULT = {
+    "attrs": [{"key": "fusty", "label": "Fusty", "group": "defect"}, {"key": "musty", "label": "Musty", "group": "defect"},
+              {"key": "winey", "label": "Winey", "group": "defect"}, {"key": "rancid", "label": "Rancid", "group": "defect"},
+              {"key": "frostbitten", "label": "Frostbitten", "group": "defect"}, {"key": "others", "label": "Others", "group": "defect"},
+              {"key": "fruity", "label": "Fruity", "group": "positive"}, {"key": "bitter", "label": "Bitter", "group": "positive"},
+              {"key": "pungent", "label": "Pungent", "group": "positive"}],
+    "min": 8, "max": 12,
+    "classes": ["Extra Virgin", "Virgin", "Lampante"],
+    "fruity_types": ["Green", "Ripe", "Green & Ripe", "Not applicable"],
+    "defect_types": ["Fusty", "Musty", "Winey", "Rancid", "Frostbitten", "Others", "None"],
+    "reference": "COI/T.20/Doc. No 15 (except section 10.4) – Regulation (EU) 2022/2105",
+}
+SENSORY_NAME = "Sensory Analysis of virgin olive oil"
+SENSORY_ROWS = [("Median of fruitiness", "quantitative"), ("Median of the dominant defect", "quantitative"),
+                ("Category", "qualitative")]
+# Feuilles proposées d'office pour une campagne « olive » (mots-clés cherchés dans le nom / paramètre des essais).
+OLIVE_LAYOUT = [("sensory", "Sensory Analysis", "sensory", ["sensory"]),
+                ("pesticides", "Pesticides", "pesticide", ["pesticide"]),
+                ("fatty_acid_profile", "Fatty Acid Profile", "analysis_rounded", ["fatty"]),
+                ("acidity", "Acidity", "analysis_basic", ["acidity"]),
+                ("k232_k270", "K232-K270", "analysis_basic", ["k232", "k270", "uv absorb"])]
+_PEST_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sheet_data", "pesticides.txt")
 IDENT_INPUT = {"submission_date": "date", "reception_date": "date", "bottle_opening": "date",
                "samples_tested": "number", "storage_temp": "number", "accreditation": "yesno"}
 
@@ -81,6 +106,7 @@ PRESETS = {
                                   _c("unit", "Unit", "fixed", fixed="unit"), _c("date", "Analysis Date", "date"),
                                   _c("sample", "Sample Code", "fixed", fixed="sample"),
                                   _c("remarks", "Comments", "text", "remarks")]),
+    "sensory": ("Analyse sensorielle : grille des dégustateurs + paramètres globaux (olive)", "sensory", [], lambda: []),
     "pesticide": ("Pesticides : accréditation, état, résultat, technique (olive)", "quantitative", [],
                   lambda: [_c("accredited", "Accredited ?", "select", options=["Yes", "No"]),
                            _c("state", "State", "select", options=["Provide Result", "<LOQ", "Not Tested"]),
@@ -98,18 +124,38 @@ def _slug(text, fallback="x"):
     return re.sub(r"[^a-z0-9]+", "_", (text or "").lower()).strip("_")[:30] or fallback
 
 
-def make_sheet(preset, title, key):
+def make_sheet(preset, title, key, match=None):
     label, kind, scale, builder = PRESETS[preset]
-    return {"key": key, "title": title, "kind": kind, "scale": list(scale), "cols": builder()}
+    sheet = {"key": key, "title": title, "kind": kind, "scale": list(scale), "cols": builder(), "match": list(match or [])}
+    if kind == "sensory":
+        sheet["sensory"] = json.loads(json.dumps(SENSORY_DEFAULT))
+        sheet["match"] = sheet["match"] or ["sensory"]
+    return sheet
+
+
+def trial_label(trial):
+    """Texte affiché dans la colonne « Proficiency Testing Properties » : le paramètre s'il existe, sinon le nom."""
+    p = (trial.parameter or "").strip()
+    return p if p and p.lower() != (trial.name or "").strip().lower() else trial.name
+
+
+def _trial_text(trial):
+    return f"{trial.name} {trial.parameter or ''}".lower()
 
 
 def default_config(campaign):
-    """Configuration de départ, déduite des types d'essais déjà présents dans la campagne."""
+    """Configuration de départ : feuilles olive (si l'on reconnaît les essais), puis une feuille par type d'essai."""
+    sheets, used = [], set()
+    for key, title, preset, words in OLIVE_LAYOUT:
+        hit = [t for t in campaign.trials if any(w in _trial_text(t) for w in words)]
+        if hit:
+            sheets.append(make_sheet(preset, title, key, words))
+            used.update(t.id for t in hit)
     titles = {"quantitative": ("quant_mean", "Quantitative Results"), "qualitative": ("qual_grade", "Qualitative Results"),
               "solidite": ("solidity", "Solidity Fastness Results")}
-    sheets, seen = [], set()
+    seen = set()
     for t in campaign.trials:
-        if t.trial_type in titles and t.trial_type not in seen:
+        if t.id not in used and t.trial_type in titles and t.trial_type not in seen:
             seen.add(t.trial_type)
             preset, title = titles[t.trial_type]
             sheets.append(make_sheet(preset, title, t.trial_type))
@@ -133,10 +179,17 @@ def save_config(campaign, cfg):
 
 
 def sheet_key_of(cfg, trial):
-    keys = [s["key"] for s in cfg["sheets"]]
-    if trial.sheet_key in keys:
+    sheets = cfg["sheets"]
+    if trial.sheet_key in [s["key"] for s in sheets]:
         return trial.sheet_key
-    for s in cfg["sheets"]:
+    text = _trial_text(trial)
+    for s in sheets:                                   # feuille reconnue par mot-clé (olive…)
+        if any(w in text for w in s.get("match", [])):
+            return s["key"]
+    for s in sheets:                                   # sinon : première feuille du même type, sans mot-clé
+        if s["kind"] == trial.trial_type and not s.get("match"):
+            return s["key"]
+    for s in sheets:
         if s["kind"] == trial.trial_type:
             return s["key"]
     return None
@@ -179,7 +232,24 @@ def builder(campaign_id):
     unassigned = [t for t in campaign.trials if sheet_key_of(cfg, t) is None]
     return render_template("sheets/builder.html", campaign=campaign, cfg=cfg, sheets=sheets, unassigned=unassigned,
                            kinds=KINDS, col_types=COL_TYPES, col_roles=COL_ROLES, fixed_from=FIXED_FROM,
-                           presets=PRESETS, ident_fields=IDENT_FIELDS)
+                           presets=PRESETS, ident_fields=IDENT_FIELDS, pesticides=_pesticide_list())
+
+
+def _pesticide_list():
+    try:
+        with open(_PEST_FILE, encoding="utf-8") as fh:
+            return [x.strip() for x in fh if x.strip()]
+    except OSError:
+        return []
+
+
+def _new_trial(campaign, sheet, **kw):
+    trial = Trial(campaign_id=campaign.id, sheet_key=sheet["key"], **kw)
+    db.session.add(trial)
+    db.session.flush()
+    for cl in campaign.laboratories:
+        db.session.add(ParticipantForm(trial_id=trial.id, laboratory_id=cl.laboratory_id, status="pending"))
+    return trial
 
 
 def _builder_action(campaign, cfg, sheet, action):
@@ -197,7 +267,12 @@ def _builder_action(campaign, cfg, sheet, action):
         key, n = _slug(title, "feuille"), 2
         while any(s["key"] == key for s in cfg["sheets"]):
             key, n = f"{_slug(title, 'feuille')}_{n}", n + 1
-        cfg["sheets"].append(make_sheet(preset, title, key))
+        new = make_sheet(preset, title, key)
+        cfg["sheets"].append(new)
+        if preset == "sensory" and not any(sheet_key_of(cfg, t) == key for t in campaign.trials):
+            for pname, ptype in SENSORY_ROWS:     # les 3 résultats transmis pour évaluation
+                _new_trial(campaign, new, name=SENSORY_NAME, parameter=pname, trial_type=ptype, method="COI")
+            db.session.commit()
         save_config(campaign, cfg)
         return f"Feuille « {title} » ajoutée."
 
@@ -219,6 +294,44 @@ def _builder_action(campaign, cfg, sheet, action):
         cfg["sheets"] = [s for s in cfg["sheets"] if s["key"] != sheet["key"]]
         save_config(campaign, cfg)
         return f"Feuille « {sheet['title']} » supprimée."
+
+    if action == "save_sensory":
+        sheet["title"] = (f.get("title") or "").strip() or sheet["title"]
+        sx = sheet.setdefault("sensory", json.loads(json.dumps(SENSORY_DEFAULT)))
+        attrs = []
+        for line in (f.get("attrs") or "").splitlines():
+            label, _, group = [p.strip() for p in line.partition("|")]
+            if label:
+                attrs.append({"key": _slug(label, "attr"), "label": label,
+                              "group": "positive" if group.lower().startswith("pos") else "defect"})
+        if attrs:
+            sx["attrs"] = attrs
+        sx["min"] = f.get("min", sx["min"], type=int)
+        sx["max"] = min(max(f.get("max", sx["max"], type=int), 1), 30)
+        for k in ("classes", "fruity_types", "defect_types"):
+            lst = _split(f.get(k))
+            if lst:
+                sx[k] = lst
+        sx["reference"] = (f.get("reference") or "").strip() or sx.get("reference", "")
+        save_config(campaign, cfg)
+        return f"Paramètres de l'analyse sensorielle « {sheet['title']} » enregistrés."
+
+    if action == "bulk_add":
+        lines = [x.strip() for x in (f.get("bulk_lines") or "").splitlines() if x.strip()]
+        existing = {trial_label(t).lower() for t in trials_of(cfg, campaign, sheet["key"])}
+        group = (f.get("bulk_name") or "").strip() or sheet["title"]
+        ttype = sheet["kind"] if sheet["kind"] != "sensory" else "quantitative"
+        n = 0
+        for p in lines:
+            if p.lower() in existing:
+                continue
+            existing.add(p.lower())
+            _new_trial(campaign, sheet, name=group, parameter=p, trial_type=ttype,
+                       unit=(f.get("bulk_unit") or "").strip(), method=(f.get("bulk_method") or "").strip(),
+                       sample_reference=(f.get("bulk_sample") or "").strip())
+            n += 1
+        db.session.commit()
+        return f"{n} ligne(s) ajoutée(s) à « {sheet['title']} »." if n else "Aucune nouvelle ligne (déjà présentes)."
 
     if action == "save_sheet":
         sheet["title"] = (f.get("title") or "").strip() or sheet["title"]
@@ -265,13 +378,15 @@ def _builder_action(campaign, cfg, sheet, action):
                     continue
                 if name:
                     trial.name = name
+                trial.parameter = (f.get(f"r{i}_param") or "").strip() or None
                 trial.unit = (f.get(f"r{i}_unit") or "").strip()
                 trial.method = (f.get(f"r{i}_method") or "").strip()
                 trial.sample_reference = (f.get(f"r{i}_sample") or "").strip()
                 trial.scale = ", ".join(_split(f.get(f"r{i}_scale"))) or None
                 trial.sheet_key = sheet["key"]
             elif name:
-                trial = Trial(campaign_id=campaign.id, name=name, trial_type=sheet["kind"],
+                trial = Trial(campaign_id=campaign.id, name=name, trial_type=sheet["kind"] if sheet["kind"] != "sensory" else "quantitative",
+                              parameter=(f.get(f"r{i}_param") or "").strip() or None,
                               unit=(f.get(f"r{i}_unit") or "").strip(), method=(f.get(f"r{i}_method") or "").strip(),
                               sample_reference=(f.get(f"r{i}_sample") or "").strip(),
                               scale=", ".join(_split(f.get(f"r{i}_scale"))) or None, sheet_key=sheet["key"])
@@ -369,9 +484,11 @@ def entry(campaign_id):
                     own = trial_scale(t) if c["role"] in ("result", "final", "dye") else []
                     opts[c["key"]] = own or c["options"] or s["scale"]
             fixed = {"unit": t.unit or "", "method": t.method or "", "sample": t.sample_reference or ""}
-            rows.append({"n": n, "trial": t, "cells": cells, "opts": opts, "fixed": fixed,
+            rows.append({"n": n, "trial": t, "label": trial_label(t), "cells": cells, "opts": opts, "fixed": fixed,
                          "confirmed": bool(t.id in forms and forms[t.id].submission and forms[t.id].submission.confirmed)})
-        sheets.append({"sheet": s, "rows": rows})
+        sample = next((r["trial"].sample_reference for r in rows if r["trial"].sample_reference), "")
+        sheets.append({"sheet": s, "rows": rows, "sample": sample,
+                       "sval": store["cells"].get("sensory:" + s["key"], {}) if s["kind"] == "sensory" else {}})
     all_rows = [r for sh in sheets for r in sh["rows"]]
     confirmed_all = bool(all_rows) and all(r["confirmed"] for r in all_rows)
     ident_defaults = {"country": "", "accreditation": "Yes" if (lab and lab.iso17025_accredited) else ""}
@@ -394,6 +511,9 @@ def _save_entry(campaign, cfg, lab, row, store, forms):
     accredited = store["ident"].get("accreditation") == "Yes"
     saved, errors = 0, []
     for s in cfg["sheets"]:
+        if s["kind"] == "sensory":
+            saved += _save_sensory(campaign, cfg, s, f, store, forms, errors, reception, accredited)
+            continue
         for t in trials_of(cfg, campaign, s["key"]):
             vals = {c["key"]: (f.get(f"c_{t.id}_{c['key']}") or "").strip()
                     for c in s["cols"] if c["type"] not in ("mean", "fixed")}
@@ -510,3 +630,87 @@ def _upsert(form, trial, fields, vals, reception, accredited):
     sub.submitted_at = datetime.utcnow()
     sub.validated, sub.confirmed, sub.confirmed_at = False, False, None
     form.status = "anomaly" if fields["anomaly"] else "submitted"
+
+
+def sensory_stats(sx, grid):
+    """Médianes par attribut, médiane fruitée, défaut dominant et catégorie suggérée (COI/T.15/NC n°3)."""
+    meds = {}
+    for a in sx["attrs"]:
+        nums = []
+        for row in grid:
+            v = row.get(a["key"], "")
+            if v != "":
+                x = _num(v)
+                if not 0 <= x <= 10:
+                    raise ValueError("les intensités doivent être comprises entre 0 et 10")
+                nums.append(x)
+        meds[a["key"]] = round(statistics.median(nums), 1) if nums else None
+    filled = sum(1 for row in grid if any(row.get(a["key"], "") != "" for a in sx["attrs"]))
+    fruity_attr = next((a for a in sx["attrs"] if a["key"] == "fruity"), None) or next((a for a in sx["attrs"] if a["group"] == "positive"), None)
+    return meds, filled, (meds.get(fruity_attr["key"]) if fruity_attr else None)
+
+
+def _save_sensory(campaign, cfg, s, f, store, forms, errors, reception, accredited):
+    sx = s.get("sensory") or SENSORY_DEFAULT
+    k = s["key"]
+    grid = []
+    for i in range(1, sx["max"] + 1):
+        row = {a["key"]: (f.get(f"sg_{k}_{i}_{a['key']}") or "").strip() for a in sx["attrs"]}
+        row["descriptor"] = (f.get(f"sg_{k}_{i}_descriptor") or "").strip()
+        grid.append(row)
+    sval = {n: (f.get(f"sp_{k}_{n}") or "").strip() for n in
+            ("panel", "leader", "recognised", "date", "comments", "classification", "fruity_type", "defect_type", "descriptor")}
+    sval["grid"] = grid
+    store["cells"]["sensory:" + k] = sval
+    try:
+        meds, filled, fruity = sensory_stats(sx, grid)
+    except ValueError as exc:
+        errors.append(f"{s['title']} : {exc}")
+        return 0
+    if filled == 0 or fruity is None:
+        if filled:
+            errors.append(f"{s['title']} : renseignez au moins l'intensité « Fruity »")
+        return 0
+    if filled < sx["min"]:
+        flash(f"{s['title']} : {filled} dégustateur(s) saisi(s), le minimum est {sx['min']}.", "warning")
+    defects = [a for a in sx["attrs"] if a["group"] == "defect"]
+    chosen = next((a for a in defects if a["label"].lower() == sval["defect_type"].lower()), None)
+    if chosen is not None:
+        defect = meds.get(chosen["key"]) or 0.0
+    else:
+        defect = max([meds.get(a["key"]) or 0.0 for a in defects] or [0.0])
+    if sval["classification"]:
+        category = sval["classification"]
+    else:
+        category = "Extra Virgin" if (defect == 0 and fruity > 0) else ("Virgin" if (0 < defect <= 3.5 and fruity > 0) else "Lampante")
+    n = 0
+    for t in trials_of(cfg, campaign, k):
+        form = forms.get(t.id)
+        out = _sensory_output(t)
+        if form is None or out is None:
+            continue
+        fields = {"value": None, "replicate_2": None, "qualitative_result": None, "solidite_data": None,
+                  "uncertainty": None, "remarks": sval["comments"] or None, "conform": None, "anomaly": False, "z": None, "en": None}
+        if out == "class":
+            fields["qualitative_result"] = category
+            if t.expected_qualitative_result:
+                fields["conform"] = category.strip().lower() == t.expected_qualitative_result.strip().lower()
+                fields["anomaly"] = fields["conform"] is False
+        else:
+            value = fruity if out == "fruity" else defect
+            fields["value"] = value
+            fields["z"], fields["anomaly"] = compute_z_score(value, t.target_value, t.target_sd)
+        _upsert(form, t, fields, {"sensory": {"medians": meds, "tasters": filled, "category": category}}, reception, accredited)
+        n += 1
+    return n
+
+
+def _sensory_output(trial):
+    p = f"{trial.parameter or ''} {trial.name}".lower()
+    if "fruit" in p:
+        return "fruity"
+    if "defect" in p:
+        return "defect"
+    if "categ" in p or "class" in p:
+        return "class"
+    return None

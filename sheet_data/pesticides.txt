@@ -1,0 +1,206 @@
+2-Phenylphenol
+Acetochlor
+Acrinathrin
+Aldrin
+Atrazine
+Azinphos-ethyl
+Bifenthrin
+Bromophos-ethyl
+Bromopropylate
+Bupirimate
+Cadusafos
+Chlordane (cis)
+Chlordane (trans)
+Chlorfenvinphos
+Chlorobenzilate
+Chlorothalonil
+Chlorpropham
+Chlorpyrifos-methyl
+Chlorpyriphos
+Chlorthal-dimethyl
+Coumaphos
+Cyfluthrin (somme de 4 isomères)
+Cyhalothrin Lambda
+Cypermethrin
+Cyprodinil
+DDD, p,p'-
+DDE, p,p'-
+DDT, o,p'-
+DDT, p,p'-
+Deltamethrin
+Diazinon
+Dieldrin
+Diphenylamine
+Disulfoton
+Endosulfan I
+Endosulfan II
+Endosulfan sulfate
+Endrin
+EPN
+Ethion
+Etofenprox
+Etrimfos
+Fenamiphos
+Fenarimol
+Fenitrothion
+Fenpropathrin
+Fenthion
+Fenvalerate
+Fipronil
+Flucythrinate
+Fludioxonil
+Fluquinconazole
+Flusilazole
+Flutolanil
+Flutriafol
+Fluvalinate (tau)
+Fonofos
+HCH-α
+HCH-β
+HCH-γ(Lindane)
+HCH-δ (delta)
+Heptachlor
+Hexachlorobenzene
+Isofenphos ethyl
+Isofenphos-methyl
+Malathion
+Metazachlor
+Methacrifos
+Methoxychlor
+Myclobutanil
+Nitrofen
+Oxadiazon
+Oxyfluorfen
+Paclobutrazol
+Parathion (Ethyl )
+Parathion-methyl
+Penconazole
+Pendimethalin
+Penflufen
+Pentachloroaniline
+Permetrin (Cis & Trans)
+Phosalone
+Piperonyl butoxide
+Pirimiphos-ethyl
+Pirimiphos-methyl
+Procymidone
+Profenofos
+Propargite
+Propyzamide
+Pyrazophos
+Pyridaben
+Pyridaphenthion
+Pyrimethanil
+Pyriproxyfen
+Quinalphos
+Quintozene
+Tebuconazole
+Tebufenpyrad
+Tefluthrin
+Terbufos
+Terbuthylazine
+Tetrachloronitrobenzene (Tecnazene)
+Tetrachlorvinphos
+Tetradifon
+Tetramethrin
+Tolclofos-methyl
+Tolylfluanid
+Triadimefon
+Triadimenol
+Triallate
+Triazophos
+Trifluralin
+Vinclozolin
+Acetamiprid
+Aldicarb
+Aldicarb sulfon
+Ametoctradin
+Amidosulfuron
+Azoxystrobin
+Benalaxyl
+Bendiocarb
+Benthiavalicarb-isopropyl
+Boscalid
+Buprofezin
+Carbaryl (sevin)
+Carbendazim
+Carbofuran
+Cyazofamid
+Cyflufenamid
+Demeton-s-methylsulfone
+Dicrotophos
+Diethofencarb
+Dimethoate
+Dimoxystrobin
+Disulfoton sulfoxide
+Diuron
+Epoxiconazole
+Ethiofencarb
+Etoxazole
+Fenamidone
+Fenamiphos-sulfone
+Fenamiphos-sulfoxide
+Fenazaquin
+Fenbuconazole
+Fenoxycarb
+Fenpropimorph
+Fenpyroximate
+Fensulfothion
+Fenthion-sulfone
+Fenthion-sulfoxide
+Flubendiamide
+Flufenacet (fluthiamide)
+Flufenoxuron
+Fluopicolide
+Fluopyram
+Flusilazole
+Fosthiazate
+Furathiocarb
+Hexythiazox
+Imazalil
+Imidacloprid
+Isoprocarb
+Kresoxim methyl
+Malaoxon
+Mandipropamid
+Mecarbam
+Mepanipyrim
+Metamitron
+Methiocarb sulfone
+Methiocarb sulfoxide
+Methomyl
+Methoxyfenozide
+Metrafenone
+Metribuzin
+Monceren (pencycuron)
+Monocrotophos
+Monolinuron
+Oxadixyl
+Oxamyl
+Penthiopyrad
+Phenthoate
+Phorate-sulfoxide
+Picoxystrobin
+Pirimicarb
+Prochloraz
+Prometryne
+Propetamphos
+Propiconazole
+Propoxur
+Prosulfocarb
+Pyraclostrobin
+Quinoxyfen
+Spinetoram (J&L)
+Spirotetramat
+Spiroxamine
+Tebufenozide
+Terbufos-sulfone
+Terbufos-sulfoxide
+Terbutryn
+Tetraconazole
+Thiabendazole
+Thiacloprid
+Thiodicarb
+Tolfenpyrad
+Trifloxystrobin
+Triticonazole

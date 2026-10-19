@@ -66,6 +66,12 @@ def submit_form(form_id):
         flash("Accès non autorisé à ce formulaire.", "danger")
         return redirect(url_for("participants.portal"))
 
+    if request.method == "GET":   # la saisie se fait désormais dans la feuille de la campagne
+        from blueprints.sheets import load_config, sheet_key_of
+        cfg = load_config(form.trial.campaign)
+        return redirect(url_for("sheets.entry", campaign_id=form.trial.campaign_id,
+                                tab=sheet_key_of(cfg, form.trial) or "identification"))
+
     if request.method == "POST":
         trial_type = form.trial.trial_type
         method_used = request.form.get("method_used", "").strip()
