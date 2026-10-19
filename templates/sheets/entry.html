@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}Feuille de saisie — {{ campaign.reference }}{% endblock %}
+{% block extra_style %}
+.xl-band { background:#1F3864; color:#fff; border-radius:12px 12px 0 0; padding:14px 20px; }
+.xl-band .sub { font-size:12.5px; opacity:.85; }
+.xl-table { border-collapse:separate; border-spacing:0; font-size:13px; }
+.xl-table th { background:#1F3864; color:#fff; font-weight:600; text-align:center; vertical-align:middle; padding:8px 10px; border:1px solid #fff; white-space:nowrap; }
+.xl-table td { border:1px solid #D9D9D9; padding:0; vertical-align:middle; background:#fff; }
+.xl-table td.lbl { padding:6px 10px; min-width:260px; font-weight:500; }
+.xl-table td.num { padding:6px 10px; text-align:center; width:44px; color:#666; }
+.xl-table td.auto { background:#E7E6E6; padding:6px 10px; text-align:center; font-weight:600; min-width:80px; }
+.xl-table td.fixed { background:#F2F2F2; padding:6px 10px; min-width:90px; font-size:12.5px; }
+.xl-in { width:100%; min-width:76px; border:0; background:#FFF2CC; padding:6px 8px; text-align:center; outline:none; font-size:13px; }
+.xl-in:focus { background:#FFE699; box-shadow:inset 0 0 0 2px #BF9000; }
+.xl-in:disabled { background:#FFF9E5; }
+.xl-in.text { text-align:left; min-width:150px; }
+.xl-legend span.sw { display:inline-block; width:18px; height:14px; border:1px solid #bbb; vertical-align:middle; margin-right:6px; }
+.xl-count { font-weight:700; color:#1F3864; }
+{% endblock %}
+{% block content %}
+{% set ns = namespace(tabs=[]) %}
+<div class="container-fluid px-4 py-4" style="max-width:1400px;">
+  {% if preview %}<div class="alert alert-info py-2"><i class="bi bi-eye me-1"></i>Aperçu : voici ce que voit le laboratoire (saisie désactivée). <a href="{{ url_for('sheets.builder', campaign_id=campaign.id) }}" class="fw-semibold">Modifier la feuille</a></div>{% endif %}
+  {% if confirmed_all %}<div class="alert alert-success py-2"><i class="bi bi-check-circle-fill me-1"></i>Votre soumission est confirmée. Si vous modifiez un résultat, il faudra la confirmer à nouveau.</div>{% endif %}
+
+  <form method="post" id="sheetForm" autocomplete="off">
+  <input type="hidden" name="active_tab" id="activeTab" value="{{ active_tab }}">
+
+  <div class="xl-band">
+    <div class="fw-bold fs-5">TTS Proficiency Testing – {{ campaign.name }} | {{ campaign.reference }}</div>
+    <div class="sub">Submission Sheet · ISO/IEC 17043 Accredited
+      {% if campaign.end_date %} · Closing date : {{ campaign.end_date.strftime('%d.%m.%Y') }}{% endif %}</div>
+  </div>
+
+  <ul class="nav nav-pills gap-1 p-2 bg-white border-start border-end" id="sheetTabs" role="tablist">
+    <li class="nav-item"><button class="nav-link" type="button" data-tab="instructions" data-bs-toggle="pill" data-bs-target="#tab-instructions">Instructions</button></li>
+    <li class="nav-item"><button class="nav-link" type="button" data-tab="identification" data-bs-toggle="pill" data-bs-target="#tab-identification">Identification</button></li>
+    {% for sh in sheets %}
+    <li class="nav-item"><button class="nav-link" type="button" data-tab="{{ sh.sheet.key }}" data-bs-toggle="pill" data-bs-target="#tab-{{ sh.sheet.key }}">{{ sh.sheet.title }}
+      <span class="badge text-bg-light border ms-1" data-badge="{{ sh.sheet.key }}">0</span></button></li>
+    {% endfor %}
+    <li class="nav-item"><button class="nav-link" type="button" data-tab="summary" data-bs-toggle="pill" data-bs-target="#tab-summary">Summary</button></li>
+  </ul>
+
+  <div class="tab-content bg-white border rounded-bottom p-3 mb-3">
+
+    <div class="tab-pane fade" id="tab-instructions">
+      <h5 class="fw-bold">Instructions</h5>
+      <table class="table table-sm w-auto">
+        <tr><td class="fw-semibold pe-4">Round</td><td>{{ campaign.reference }}</td></tr>
+        {% if campaign.start_date %}<tr><td class="fw-semibold">Start date</td><td>{{ campaign.start_date.strftime('%d.%m.%Y') }}</td></tr>{% endif %}
+        {% if campaign.end_date %}<tr><td class="fw-semibold">Closing date</td><td>{{ campaign.end_date.strftime('%d.%m.%Y') }}</td></tr>{% endif %}
+      </table>
+      <ol class="lh-lg">
+        <li>Complete the <b>Identification</b> tab with your laboratory information.</li>
+        <li>Enter your measured results in the result tabs (<span class="xl-legend"><span class="sw" style="background:#FFF2CC"></span>yellow cells</span>).</li>
+        <li>Click <b>Save</b> at any time: your entries are kept as a draft and can be changed.</li>
+        <li>When everything is complete, click <b>Confirm my submission</b> before the closing date.</li>
+        <li>Questions? Contact: <a href="mailto:C43@ttesting.org">C43@ttesting.org</a></li>
+      </ol>
+      <p class="small text-muted mb-0">Confidentiality: all results are treated strictly confidential. No data is shared with third parties.</p>
+    </div>
+
+    <div class="tab-pane fade" id="tab-identification">
+      <h5 class="fw-bold">Laboratory Information – {{ campaign.reference }}</h5>
+      <p class="text-muted small">Please complete all yellow highlighted cells.</p>
+      <table class="xl-table" style="min-width:560px;">
+        {% if lab %}
+        <tr><td class="lbl fw-semibold">Laboratory Code</td><td class="fixed">{{ lab.code }}</td></tr>
+        <tr><td class="lbl fw-semibold">Laboratory Name</td><td class="fixed">{{ lab.name }}</td></tr>
+        {% endif %}
+        <tr><td class="lbl fw-semibold">PT Scheme</td><td class="fixed">{{ scheme }}</td></tr>
+        <tr><td class="lbl fw-semibold">Round</td><td class="fixed">{{ campaign.reference }}</td></tr>
+        {% if campaign.end_date %}<tr><td class="lbl fw-semibold">Closing Date</td><td class="fixed">{{ campaign.end_date.strftime('%d.%m.%Y') }}</td></tr>{% endif %}
+        {% for k, label in ident_fields %}
+        <tr><td class="lbl fw-semibold">{{ label }}</td><td>
+          {% if ident_input.get(k) == 'yesno' %}
+            <select class="xl-in" name="ident_{{ k }}" {{ 'disabled' if preview }}><option value=""></option>
+              <option value="Yes" {{ 'selected' if ident.get(k) == 'Yes' }}>Yes</option><option value="No" {{ 'selected' if ident.get(k) == 'No' }}>No</option></select>
+          {% elif ident_input.get(k) == 'date' %}
+            <input class="xl-in" type="date" name="ident_{{ k }}" value="{{ ident.get(k, '') }}" {{ 'disabled' if preview }}>
+          {% elif ident_input.get(k) == 'number' %}
+            <input class="xl-in" type="text" inputmode="decimal" name="ident_{{ k }}" value="{{ ident.get(k, '') }}" {{ 'disabled' if preview }}>
+          {% else %}
+            <input class="xl-in text" type="text" name="ident_{{ k }}" value="{{ ident.get(k, '') }}" {{ 'disabled' if preview }}>
+          {% endif %}</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    {% for sh in sheets %}
+    {% set s = sh.sheet %}
+    <div class="tab-pane fade" id="tab-{{ s.key }}" data-sheet="{{ s.key }}">
+      <div class="fw-bold mb-2">{{ s.title }} <span class="text-muted fw-normal">· {{ campaign.reference }}</span></div>
+      {% if s.kind == 'sensory' %}
+      {% set sx = s.sensory %}{% set sv = sh.sval %}{% set k = s.key %}
+      <h6 class="fw-bold">Panel Information</h6>
+      <table class="xl-table mb-3" style="min-width:600px;">
+        <tr><td class="lbl fw-semibold">Panel Name</td><td><input class="xl-in text" name="sp_{{ k }}_panel" value="{{ sv.get('panel', '') }}" {{ 'disabled' if preview }}></td></tr>
+        <tr><td class="lbl fw-semibold">Panel Leader</td><td><input class="xl-in text" name="sp_{{ k }}_leader" value="{{ sv.get('leader', '') }}" {{ 'disabled' if preview }}></td></tr>
+        <tr><td class="lbl fw-semibold">Panel recognised by the COI / accredited (Yes or No ?)</td><td>
+          <select class="xl-in" name="sp_{{ k }}_recognised" {{ 'disabled' if preview }}><option value=""></option>
+            <option value="Yes" {{ 'selected' if sv.get('recognised') == 'Yes' }}>Yes</option><option value="No" {{ 'selected' if sv.get('recognised') == 'No' }}>No</option></select></td></tr>
+        <tr><td class="lbl fw-semibold">Date of Tasting</td><td><input class="xl-in" type="date" name="sp_{{ k }}_date" value="{{ sv.get('date', '') }}" {{ 'disabled' if preview }}></td></tr>
+        <tr><td class="lbl fw-semibold">Number of tasters (min {{ sx.min }} – max {{ sx.max }})</td><td class="auto" data-sx-count="{{ k }}">0</td></tr>
+        <tr><td class="lbl fw-semibold">PT Sample Code</td><td class="fixed">{{ sh.sample }}</td></tr>
+        <tr><td class="lbl fw-semibold">Reference Method</td><td class="fixed">{{ sx.reference }}</td></tr>
+      </table>
+
+      <h6 class="fw-bold">Results entered in the attributes / defects</h6>
+      <div class="table-responsive">
+      <table class="xl-table" data-sensory="{{ k }}" data-max="{{ sx.max }}" data-min="{{ sx.min }}">
+        <thead><tr><th>Taster</th>
+          {% for a in sx.attrs if a.group == 'defect' %}<th>{{ a.label }}</th>{% endfor %}
+          <th>Descriptor</th>
+          {% for a in sx.attrs if a.group != 'defect' %}<th>{{ a.label }}</th>{% endfor %}</tr></thead>
+        <tbody>
+        {% for i in range(1, sx.max + 1) %}
+          {% set row = (sv.get('grid') or [])[i - 1] if (sv.get('grid') or [])|length >= i else {} %}
+          <tr><td class="num">{{ i }}</td>
+            {% for a in sx.attrs if a.group == 'defect' %}
+            <td><input class="xl-in" type="text" inputmode="decimal" name="sg_{{ k }}_{{ i }}_{{ a.key }}" value="{{ row.get(a.key, '') }}" data-attr="{{ a.key }}" data-group="defect" data-sx="{{ k }}" {{ 'disabled' if preview }}></td>
+            {% endfor %}
+            <td><select class="xl-in" name="sg_{{ k }}_{{ i }}_descriptor" {{ 'disabled' if preview }}><option value=""></option>
+              {% for o in sx.defect_types %}<option value="{{ o }}" {{ 'selected' if row.get('descriptor') == o }}>{{ o }}</option>{% endfor %}</select></td>
+            {% for a in sx.attrs if a.group != 'defect' %}
+            <td><input class="xl-in" type="text" inputmode="decimal" name="sg_{{ k }}_{{ i }}_{{ a.key }}" value="{{ row.get(a.key, '') }}" data-attr="{{ a.key }}" data-group="positive" data-sx="{{ k }}" {{ 'disabled' if preview }}></td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+          <tr><td class="num fw-bold">Median</td>
+            {% for a in sx.attrs if a.group == 'defect' %}<td class="auto" data-med="{{ a.key }}"></td>{% endfor %}
+            <td class="auto"></td>
+            {% for a in sx.attrs if a.group != 'defect' %}<td class="auto" data-med="{{ a.key }}"></td>{% endfor %}</tr>
+        </tbody>
+      </table></div>
+
+      <h6 class="fw-bold mt-4">Results entered in the global parameters</h6>
+      <div class="table-responsive">
+      <table class="xl-table">
+        <thead><tr><th>Sample</th><th>Oil classification</th><th>Fruity type</th><th>Fruity median</th><th>Defect type</th><th>Defect median</th><th>Descriptor</th></tr></thead>
+        <tbody><tr>
+          <td class="fixed">{{ sh.sample }}</td>
+          <td><select class="xl-in" name="sp_{{ k }}_classification" data-sx-class="{{ k }}" {{ 'disabled' if preview }}><option value=""></option>{% for o in sx.classes %}<option value="{{ o }}" {{ 'selected' if sv.get('classification') == o }}>{{ o }}</option>{% endfor %}</select></td>
+          <td><select class="xl-in" name="sp_{{ k }}_fruity_type" {{ 'disabled' if preview }}><option value=""></option>{% for o in sx.fruity_types %}<option value="{{ o }}" {{ 'selected' if sv.get('fruity_type') == o }}>{{ o }}</option>{% endfor %}</select></td>
+          <td class="auto" data-sx-fruity="{{ k }}"></td>
+          <td><select class="xl-in" name="sp_{{ k }}_defect_type" data-sx-deftype="{{ k }}" {{ 'disabled' if preview }}><option value=""></option>{% for o in sx.defect_types %}<option value="{{ o }}" {{ 'selected' if sv.get('defect_type') == o }}>{{ o }}</option>{% endfor %}</select></td>
+          <td class="auto" data-sx-defect="{{ k }}"></td>
+          <td><select class="xl-in" name="sp_{{ k }}_descriptor" {{ 'disabled' if preview }}><option value=""></option>{% for o in sx.defect_types %}<option value="{{ o }}" {{ 'selected' if sv.get('descriptor') == o }}>{{ o }}</option>{% endfor %}</select></td>
+        </tr></tbody>
+      </table></div>
+      <div class="mt-2 small">Suggested classification (COI/T.15/NC No 3) : <b data-sx-suggest="{{ k }}">—</b>
+        <span class="text-muted">· if you leave « Oil classification » empty, this value is used.</span></div>
+      <h6 class="fw-bold mt-3">Panel Leader's Comments</h6>
+      <textarea class="form-control" rows="3" name="sp_{{ k }}_comments" {{ 'disabled' if preview }}>{{ sv.get('comments', '') }}</textarea>
+      <div class="xl-legend small mt-3"><b>Legend:</b>
+        <span class="ms-3"><span class="sw" style="background:#FFF2CC"></span>Cell to complete</span>
+        <span class="ms-3"><span class="sw" style="background:#E7E6E6"></span>Auto-calculated cell – do not modify</span></div>
+      <p class="small text-muted mt-2 mb-0">Enter each taster's intensity on the COI 0–10 scale (one decimal), one row per taster (min {{ sx.min }}, max {{ sx.max }}). Classification: EVOO = defect median 0 and fruity &gt; 0 · VOO = defect median &gt; 0 and ≤ 3.5 and fruity &gt; 0 · Lampante = defect median &gt; 3.5 or fruity = 0.</p>
+      {% else %}
+      <div class="table-responsive">
+      <table class="xl-table" data-sheet-table="{{ s.key }}">
+        <thead><tr><th>N°</th><th>Proficiency Testing Properties</th>
+          {% for c in s.cols %}<th>{{ c.label }}</th>{% endfor %}</tr></thead>
+        <tbody>
+        {% for r in sh.rows %}
+          <tr>
+            <td class="num">{{ r.n }}</td><td class="lbl" title="{{ r.trial.name }}">{{ r.label }}</td>
+            {% for c in s.cols %}
+              {% if c.type == 'mean' %}<td class="auto" data-mean></td>
+              {% elif c.type == 'fixed' %}<td class="fixed">{{ r.fixed.get(c.fixed, '') }}</td>
+              {% else %}
+              {% set nm = 'c_' ~ r.trial.id ~ '_' ~ c.key %}{% set val = r.cells.get(c.key, '') %}
+              <td>
+                {% if c.type == 'select' %}
+                  <select class="xl-in" name="{{ nm }}" data-role="{{ c.role }}" {{ 'disabled' if preview }}><option value=""></option>
+                    {% for o in r.opts.get(c.key, []) %}<option value="{{ o }}" {{ 'selected' if val == o }}>{{ o }}</option>{% endfor %}
+                    {% if val and val not in r.opts.get(c.key, []) %}<option value="{{ val }}" selected>{{ val }}</option>{% endif %}</select>
+                {% elif c.type == 'date' %}
+                  <input class="xl-in" type="date" name="{{ nm }}" value="{{ val }}" data-role="{{ c.role }}" {{ 'disabled' if preview }}>
+                {% elif c.type == 'number' %}
+                  <input class="xl-in" type="text" inputmode="decimal" name="{{ nm }}" value="{{ val }}" data-role="{{ c.role }}" data-num="1" {{ 'disabled' if preview }}>
+                {% else %}
+                  <input class="xl-in text" type="text" name="{{ nm }}" value="{{ val }}" data-role="{{ c.role }}" {{ 'disabled' if preview }}>
+                {% endif %}
+              </td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+        {% else %}
+          <tr><td colspan="{{ s.cols|length + 2 }}" class="p-3 text-muted">Aucune ligne dans cette feuille pour le moment.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      <div class="mt-2">Number of results entered : <span class="xl-count" data-count="{{ s.key }}">0</span> / <span data-total="{{ s.key }}">0</span></div>
+      <div class="xl-legend small mt-3"><b>Legend:</b>
+        <span class="ms-3"><span class="sw" style="background:#FFF2CC"></span>Cell to complete – enter measured value</span>
+        <span class="ms-3"><span class="sw" style="background:#E7E6E6"></span>Auto-calculated cell – do not modify</span></div>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <div class="tab-pane fade" id="tab-summary">
+      <h5 class="fw-bold">Auto Summary – {{ campaign.reference }}</h5>
+      <table class="table table-sm w-auto">
+        {% if lab %}<tr><td class="fw-semibold pe-4">Lab Code</td><td>{{ lab.code }}</td></tr>{% endif %}
+        <tr><td class="fw-semibold">Round</td><td>{{ campaign.reference }}</td></tr>
+        {% for sh in sheets %}<tr><td class="fw-semibold pe-4">Results entered – {{ sh.sheet.title }}</td><td><span data-sum="{{ sh.sheet.key }}">0</span> / <span data-sumtotal="{{ sh.sheet.key }}">0</span></td></tr>{% endfor %}
+        <tr class="table-light"><td class="fw-bold">Total results entered</td><td class="fw-bold"><span id="sumAll">0</span> / <span id="sumAllTotal">0</span></td></tr>
+      </table>
+    </div>
+  </div>
+
+  {% if not preview %}
+  <div class="d-flex flex-wrap gap-2 justify-content-end">
+    <button class="btn btn-outline-primary" type="submit" name="action" value="save"><i class="bi bi-save me-1"></i>Save</button>
+    <button class="btn btn-success" type="submit" name="action" value="confirm" onclick="return confirm('Confirmer votre soumission ? Vos résultats seront transmis pour validation.');"><i class="bi bi-check2-circle me-1"></i>Confirm my submission</button>
+  </div>
+  {% endif %}
+  </form>
+</div>
+
+<script>
+(function () {
+  var active = "{{ active_tab }}";
+  var btns = document.querySelectorAll('#sheetTabs [data-tab]');
+  var first = document.querySelector('#sheetTabs [data-tab="' + active + '"]') || btns[0];
+  first.classList.add('active');
+  document.querySelector(first.dataset.bsTarget).classList.add('show', 'active');
+  btns.forEach(function (b) { b.addEventListener('shown.bs.tab', function () { document.getElementById('activeTab').value = b.dataset.tab; }); });
+
+  function num(v) { v = (v || '').trim().replace(',', '.'); return v !== '' && !isNaN(v) ? parseFloat(v) : null; }
+  function refresh() {
+    var all = 0, allTotal = 0;
+    document.querySelectorAll('[data-sheet-table]').forEach(function (tbl) {
+      var key = tbl.dataset.sheetTable, count = 0, total = 0;
+      tbl.querySelectorAll('tbody tr').forEach(function (tr) {
+        var vals = [];
+        tr.querySelectorAll('[data-role="result"],[data-role="final"],[data-role="dye"]').forEach(function (el) {
+          total++; if ((el.value || '').trim() !== '') count++;
+        });
+        tr.querySelectorAll('[data-role="result"][data-num]').forEach(function (el) { var n = num(el.value); if (n !== null) vals.push(n); });
+        var mean = tr.querySelector('[data-mean]');
+        if (mean) mean.textContent = vals.length ? (vals.reduce(function (a, b) { return a + b; }, 0) / vals.length).toFixed(3).replace(/\.?0+$/, '') : '';
+      });
+      all += count; allTotal += total;
+      var set = function (sel, v) { var e = document.querySelector(sel); if (e) e.textContent = v; };
+      set('[data-count="' + key + '"]', count); set('[data-total="' + key + '"]', total);
+      set('[data-sum="' + key + '"]', count); set('[data-sumtotal="' + key + '"]', total);
+      set('[data-badge="' + key + '"]', count + '/' + total);
+    });
+    document.querySelectorAll('[data-sensory]').forEach(function (tbl) {
+      var key = tbl.dataset.sensory, max = parseInt(tbl.dataset.max, 10), filled = 0, cols = {};
+      tbl.querySelectorAll('tbody tr').forEach(function (tr) {
+        var any = false;
+        tr.querySelectorAll('input[data-attr]').forEach(function (el) {
+          var n = num(el.value); if (n !== null) { any = true; (cols[el.dataset.attr] = cols[el.dataset.attr] || []).push(n); }
+        });
+        if (any) filled++;
+      });
+      var med = function (a) { if (!a || !a.length) return null; a = a.slice().sort(function (x, y) { return x - y; }); var m = a.length >> 1; var v = a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; return Math.round(v * 10) / 10; };
+      var meds = {}; tbl.querySelectorAll('[data-med]').forEach(function (td) { var m = med(cols[td.dataset.med]); meds[td.dataset.med] = m; td.textContent = m === null ? '' : m.toFixed(1); });
+      var fruity = meds['fruity'] !== undefined ? meds['fruity'] : null;
+      var defects = {}; tbl.querySelectorAll('input[data-group="defect"]').forEach(function (el) { defects[el.dataset.attr] = 1; });
+      var typeSel = document.querySelector('[data-sx-deftype="' + key + '"]'), chosen = null;
+      if (typeSel && typeSel.value) { var want = typeSel.value.toLowerCase(); Object.keys(defects).forEach(function (a) { var th = tbl.querySelector('input[data-attr="' + a + '"]'); var idx = Array.prototype.indexOf.call(th.closest('tr').children, th.closest('td')); var label = tbl.querySelectorAll('thead th')[idx].textContent.toLowerCase(); if (label === want) chosen = a; }); }
+      var defect = 0;
+      if (filled) { if (chosen) defect = meds[chosen] || 0; else Object.keys(defects).forEach(function (a) { defect = Math.max(defect, meds[a] || 0); }); }
+      var setv = function (sel, v) { var e = document.querySelector(sel); if (e) e.textContent = v; };
+      setv('[data-sx-fruity="' + key + '"]', fruity === null ? '' : fruity.toFixed(1));
+      setv('[data-sx-defect="' + key + '"]', filled ? defect.toFixed(1) : '');
+      setv('[data-sx-count="' + key + '"]', filled);
+      var sug = '—'; if (filled && fruity !== null) sug = (defect === 0 && fruity > 0) ? 'Extra Virgin' : ((defect > 0 && defect <= 3.5 && fruity > 0) ? 'Virgin' : 'Lampante');
+      setv('[data-sx-suggest="' + key + '"]', sug);
+      all += filled; allTotal += max;
+      setv('[data-sum="' + key + '"]', filled); setv('[data-sumtotal="' + key + '"]', max); setv('[data-badge="' + key + '"]', filled + '/' + max);
+    });
+    document.getElementById('sumAll').textContent = all;
+    document.getElementById('sumAllTotal').textContent = allTotal;
+  }
+  document.getElementById('sheetForm').addEventListener('change', refresh);
+  document.getElementById('sheetForm').addEventListener('input', function (e) {
+    if (e.target.dataset && (e.target.dataset.num || e.target.dataset.attr) && e.target.tagName === 'INPUT') e.target.value = e.target.value.replace(/[^0-9.,\-]/g, '');
+    refresh();
+  });
+  refresh();
+})();
+</script>
+{% endblock %}

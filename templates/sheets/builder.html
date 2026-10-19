@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}Feuille de saisie — {{ campaign.reference }}{% endblock %}
+{% block content %}
+<div class="container-fluid px-4 py-4" style="max-width:1250px;">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
+    <h3 class="fw-bold mb-0"><i class="bi bi-table text-primary me-2"></i>Feuille de saisie — {{ campaign.reference }}</h3>
+    <span class="d-flex gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('trials.list_trials', campaign_id=campaign.id) }}"><i class="bi bi-arrow-left me-1"></i>Essais</a>
+      <a class="btn btn-primary btn-sm" target="_blank" href="{{ url_for('sheets.entry', campaign_id=campaign.id) }}"><i class="bi bi-eye me-1"></i>Aperçu côté participant</a>
+    </span>
+  </div>
+  <p class="text-muted">Ce que vous réglez ici est exactement ce que le laboratoire voit : <b>onglets</b> (feuilles), <b>colonnes</b> (Result 1, Mean, Unit…) et <b>lignes</b> (paramètres à mesurer). Ajoutez ou supprimez selon l'essai.</p>
+
+  <div class="card shadow-sm mb-4" style="border-radius:14px;">
+    <div class="card-header fw-bold">Onglet « Identification »</div>
+    <form method="post" class="card-body d-flex flex-wrap align-items-center gap-3">
+      <input type="hidden" name="action" value="save_ident">
+      {% for k, label in ident_fields %}
+      <div class="form-check"><input class="form-check-input" type="checkbox" name="ident_{{ k }}" id="id_{{ k }}" value="1" {% if k in cfg.ident %}checked{% endif %}>
+        <label class="form-check-label" for="id_{{ k }}">{{ label }}</label></div>
+      {% endfor %}
+      <button class="btn btn-sm btn-primary ms-auto" type="submit">Enregistrer</button>
+    </form>
+  </div>
+
+  {% for s in sheets %}
+  {% set sh = s.sheet %}
+  <div class="card shadow-sm mb-4" style="border-radius:14px;" id="sheet-{{ sh.key }}">
+    <div class="card-header d-flex align-items-center justify-content-between gap-2">
+      <span class="fw-bold"><i class="bi bi-file-earmark-spreadsheet me-2 text-success"></i>{{ sh.title }}
+        <span class="badge text-bg-light border ms-2">{{ kinds[sh.kind] }}</span></span>
+      <form method="post" onsubmit="return confirm('Supprimer cette feuille ?');">
+        <input type="hidden" name="action" value="delete_sheet"><input type="hidden" name="key" value="{{ sh.key }}">
+        <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash me-1"></i>Supprimer la feuille</button>
+      </form>
+    </div>
+    <div class="card-body">
+      {% if sh.kind == 'sensory' %}<h6 class="fw-bold">Grille des dégustateurs</h6>
+      <form method="post">
+        <input type="hidden" name="action" value="save_sensory"><input type="hidden" name="key" value="{{ sh.key }}">
+        {% set sx = sh.sensory %}
+        <div class="row g-2 mb-2">
+          <div class="col-md-4"><label class="form-label small mb-1">Titre de l'onglet</label><input class="form-control form-control-sm" name="title" value="{{ sh.title }}"></div>
+          <div class="col-md-2"><label class="form-label small mb-1">Dégustateurs min.</label><input class="form-control form-control-sm" type="number" name="min" value="{{ sx.min }}"></div>
+          <div class="col-md-2"><label class="form-label small mb-1">Dégustateurs max.</label><input class="form-control form-control-sm" type="number" name="max" value="{{ sx.max }}"></div>
+          <div class="col-md-4"><label class="form-label small mb-1">Méthode de référence</label><input class="form-control form-control-sm" name="reference" value="{{ sx.reference }}"></div>
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-md-4"><label class="form-label small mb-1">Attributs (un par ligne : <code>Nom | defect</code> ou <code>Nom | positive</code>)</label>
+            <textarea class="form-control form-control-sm" rows="9" name="attrs">{% for a in sx.attrs %}{{ a.label }} | {{ a.group }}
+{% endfor %}</textarea></div>
+          <div class="col-md-8">
+            <label class="form-label small mb-1">Classifications (virgules)</label><input class="form-control form-control-sm mb-2" name="classes" value="{{ sx.classes|join(', ') }}">
+            <label class="form-label small mb-1">Types de fruité</label><input class="form-control form-control-sm mb-2" name="fruity_types" value="{{ sx.fruity_types|join(', ') }}">
+            <label class="form-label small mb-1">Types de défaut / descripteurs</label><input class="form-control form-control-sm" name="defect_types" value="{{ sx.defect_types|join(', ') }}">
+          </div>
+        </div>
+        <div class="form-text mb-2">Les <b>lignes</b> ci-dessous sont les résultats transmis pour l'évaluation : « fruitiness » = médiane du fruité, « defect » = médiane du défaut dominant, « category » = classification. Les médianes sont calculées automatiquement.</div>
+        <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-save me-1"></i>Enregistrer la grille</button>
+      </form>{% else %}<h6 class="fw-bold">Colonnes</h6>
+      <form method="post">
+        <input type="hidden" name="action" value="save_sheet"><input type="hidden" name="key" value="{{ sh.key }}">
+        <input type="hidden" name="ncols" value="{{ sh.cols|length + 3 }}">
+        <div class="row g-2 mb-3">
+          <div class="col-md-4"><label class="form-label small mb-1">Titre de l'onglet</label>
+            <input class="form-control form-control-sm" name="title" value="{{ sh.title }}"></div>
+          <div class="col-md-8"><label class="form-label small mb-1">Liste de choix par défaut (notes, séparées par des virgules)</label>
+            <input class="form-control form-control-sm" name="scale" value="{{ sh.scale|join(', ') }}" placeholder="5, 4-5, 4, 3-4, 3, 2-3, 2, 1-2, 1"></div>
+        </div>
+        <div class="table-responsive"><table class="table table-sm align-middle">
+          <thead><tr><th style="width:70px;">Ordre</th><th>Titre de la colonne</th><th>Type</th><th>Rôle</th><th>Valeur de la ligne</th><th>Choix propres (virgules)</th><th class="text-center">Supprimer</th></tr></thead>
+          <tbody>
+          {% for i in range(sh.cols|length + 3) %}
+            {% set c = sh.cols[i] if i < sh.cols|length else none %}
+            <tr {% if not c %}class="table-light"{% endif %}>
+              <td><input type="hidden" name="c{{ i }}_key" value="{{ c.key if c else '' }}">
+                  <input class="form-control form-control-sm" type="number" step="any" name="c{{ i }}_order" value="{{ (i + 1) * 10 }}"></td>
+              <td><input class="form-control form-control-sm" name="c{{ i }}_label" value="{{ c.label if c else '' }}" placeholder="{{ 'Nouvelle colonne…' if not c else '' }}"></td>
+              <td><select class="form-select form-select-sm" name="c{{ i }}_type">{% for k, l in col_types.items() %}<option value="{{ k }}" {% if c and c.type == k %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></td>
+              <td><select class="form-select form-select-sm" name="c{{ i }}_role">{% for k, l in col_roles.items() %}<option value="{{ k }}" {% if (c and c.role == k) or (not c and k == 'info') %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></td>
+              <td><select class="form-select form-select-sm" name="c{{ i }}_fixed">{% for k, l in fixed_from.items() %}<option value="{{ k }}" {% if c and c.fixed == k %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></td>
+              <td><input class="form-control form-control-sm" name="c{{ i }}_options" value="{{ c.options|join(', ') if c else '' }}"></td>
+              <td class="text-center">{% if c %}<input class="form-check-input" type="checkbox" name="c{{ i }}_del" value="1">{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody></table></div>
+        <div class="form-text mb-2"><b>Rôle</b> : « Résultat » et « Résultat final » alimentent les statistiques (la moyenne est calculée si aucun résultat final n'est saisi) ; « Colorant » sert à la solidité des couleurs ; « Information » est conservé tel quel. Les lignes grisées servent à ajouter une colonne.</div>
+        <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-save me-1"></i>Enregistrer les colonnes</button>
+      </form>{% endif %}
+
+      <hr>
+      <h6 class="fw-bold">Lignes (paramètres de l'essai)</h6>
+      <form method="post">
+        <input type="hidden" name="action" value="save_rows"><input type="hidden" name="key" value="{{ sh.key }}">
+        <input type="hidden" name="nrows" value="{{ s.trials|length + 3 }}">
+        <div class="table-responsive"><table class="table table-sm align-middle">
+          <thead><tr><th style="width:40px;">N°</th><th>Essai (nom)</th><th>Paramètre affiché</th><th style="width:110px;">Unit</th><th>Standard / Method</th><th style="width:130px;">Sample Code</th><th>Choix propres à la ligne</th><th class="text-center">Supprimer</th></tr></thead>
+          <tbody>
+          {% for i in range(s.trials|length + 3) %}
+            {% set t = s.trials[i] if i < s.trials|length else none %}
+            <tr {% if not t %}class="table-light"{% endif %}>
+              <td class="text-muted">{{ i + 1 }}<input type="hidden" name="r{{ i }}_id" value="{{ t.id if t else '' }}"></td>
+              <td><input class="form-control form-control-sm" name="r{{ i }}_name" value="{{ t.name if t else '' }}" placeholder="{{ 'Nouvelle ligne…' if not t else '' }}"></td>
+              <td><input class="form-control form-control-sm" name="r{{ i }}_param" value="{{ t.parameter if t and t.parameter else '' }}"></td>
+              <td><input class="form-control form-control-sm" name="r{{ i }}_unit" value="{{ t.unit if t and t.unit else '' }}"></td>
+              <td><input class="form-control form-control-sm" name="r{{ i }}_method" value="{{ t.method if t and t.method else '' }}"></td>
+              <td><input class="form-control form-control-sm" name="r{{ i }}_sample" value="{{ t.sample_reference if t and t.sample_reference else '' }}"></td>
+              <td><input class="form-control form-control-sm" name="r{{ i }}_scale" value="{{ t.scale if t and t.scale else '' }}" placeholder="(liste de l'onglet)"></td>
+              <td class="text-center">{% if t %}<input class="form-check-input" type="checkbox" name="r{{ i }}_del" value="1">{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody></table></div>
+        <div class="form-text mb-2">Une ligne qui a déjà reçu des résultats ne peut pas être supprimée. Les nouvelles lignes sont créées pour tous les laboratoires inscrits.</div>
+        <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-save me-1"></i>Enregistrer les lignes</button>
+      </form>
+      <details class="mt-3"><summary class="fw-semibold small" style="cursor:pointer;"><i class="bi bi-list-ul me-1"></i>Ajouter plusieurs lignes d'un coup (une par ligne de texte)</summary>
+        <form method="post" class="row g-2 mt-1">
+          <input type="hidden" name="action" value="bulk_add"><input type="hidden" name="key" value="{{ sh.key }}">
+          <div class="col-md-3"><label class="form-label small mb-1">Nom de l'essai</label><input class="form-control form-control-sm" name="bulk_name" value="{{ s.trials[0].name if s.trials else sh.title }}"></div>
+          <div class="col-md-2"><label class="form-label small mb-1">Unit</label><input class="form-control form-control-sm" name="bulk_unit" value="{{ s.trials[0].unit if s.trials and s.trials[0].unit else '' }}"></div>
+          <div class="col-md-3"><label class="form-label small mb-1">Standard / Method</label><input class="form-control form-control-sm" name="bulk_method" value="{{ s.trials[0].method if s.trials and s.trials[0].method else '' }}"></div>
+          <div class="col-md-4"><label class="form-label small mb-1">Sample Code</label><input class="form-control form-control-sm" name="bulk_sample" value="{{ s.trials[0].sample_reference if s.trials and s.trials[0].sample_reference else '' }}"></div>
+          <div class="col-12"><textarea class="form-control form-control-sm" rows="5" name="bulk_lines" id="bulk_{{ sh.key }}" placeholder="Un paramètre par ligne…"></textarea></div>
+          <div class="col-12 d-flex gap-2">
+            {% if 'pesticide' in sh.get('match', []) and pesticides %}<button type="button" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('bulk_{{ sh.key }}').value = {{ pesticides|tojson|forceescape }}.join('\n');">Insérer la liste des {{ pesticides|length }} pesticides du modèle Excel</button>{% endif %}
+            <button class="btn btn-success btn-sm" type="submit"><i class="bi bi-plus-lg me-1"></i>Ajouter ces lignes</button>
+          </div>
+        </form>
+      </details>
+    </div>
+  </div>
+  {% endfor %}
+
+  {% if unassigned %}
+  <div class="card shadow-sm mb-4 border-warning" style="border-radius:14px;">
+    <div class="card-header fw-bold">Essais non rattachés à une feuille</div>
+    <div class="card-body">
+      {% for t in unassigned %}
+      <form method="post" class="d-flex align-items-center gap-2 mb-2">
+        <input type="hidden" name="action" value="assign"><input type="hidden" name="trial_id" value="{{ t.id }}">
+        <span class="flex-grow-1">{{ t.name }} <span class="text-muted small">({{ t.trial_type }})</span></span>
+        <select class="form-select form-select-sm w-auto" name="sheet_key">{% for s in sheets %}<option value="{{ s.sheet.key }}">{{ s.sheet.title }}</option>{% endfor %}</select>
+        <button class="btn btn-sm btn-outline-primary" type="submit">Rattacher</button>
+      </form>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card shadow-sm" style="border-radius:14px;">
+    <div class="card-header fw-bold">Ajouter une feuille (onglet)</div>
+    <form method="post" class="card-body row g-2 align-items-end">
+      <input type="hidden" name="action" value="add_sheet">
+      <div class="col-md-5"><label class="form-label small mb-1">Modèle de départ</label>
+        <select class="form-select form-select-sm" name="preset">{% for k, p in presets.items() %}<option value="{{ k }}">{{ p[0] }}</option>{% endfor %}</select></div>
+      <div class="col-md-5"><label class="form-label small mb-1">Titre de l'onglet</label>
+        <input class="form-control form-control-sm" name="title" placeholder="ex. Fatty Acid Profile"></div>
+      <div class="col-md-2"><button class="btn btn-success btn-sm w-100" type="submit"><i class="bi bi-plus-lg me-1"></i>Ajouter</button></div>
+    </form>
+  </div>
+</div>
+{% endblock %}
