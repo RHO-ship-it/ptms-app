@@ -16,6 +16,13 @@
 </div>
 {% endif %}
 
+{% if trial.trial_type == 'qualitative' %}
+<div class="alert alert-primary d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div><strong>Étude complète FTE 006 (qualitatif ordinal)</strong> — homogénéité, stabilité, stockage et transport, avec mode ou médiane et tolérance en classes.</div>
+    <a class="btn btn-primary btn-sm" href="{{ url_for('homogeneity.study_ordinal', trial_id=trial.id) }}"><i class="bi bi-clipboard2-data"></i> Ouvrir l'étude</a>
+</div>
+{% endif %}
+
 {% if not trial.target_sd %}
 <div class="alert alert-warning">
     Aucun σpt (écart-type pour l'évaluation d'aptitude) n'est défini pour cet essai. Renseignez-le sur la fiche

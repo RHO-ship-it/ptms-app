@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Étude qualitative ordinale — {{ trial.name }}{% endblock %}
+
+{% macro badge(ok, yes, no) %}<span class="badge {{ 'bg-success' if ok else 'bg-danger' }}">{{ yes if ok else no }}</span>{% endmacro %}
+
+{% macro qgrid(prefix, rows, nrows, ncols, ro, codes=none) %}
+<div class="table-responsive">
+<table class="table table-sm align-middle mb-2">
+  <thead><tr>{% if codes is not none %}<th>Échantillon</th>{% endif %}{% for c in range(ncols) %}<th class="text-center">Résultat {{ c + 1 }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in range(nrows) %}
+  <tr>
+    {% if codes is not none %}<td><input class="form-control form-control-sm" style="min-width:86px" name="hom_code_{{ r }}" value="{{ codes[r] }}" {{ 'disabled' if ro }}></td>{% endif %}
+    {% for c in range(ncols) %}
+    <td><input type="text" inputmode="decimal" class="form-control form-control-sm text-end" style="min-width:70px"
+               name="{{ prefix }}_{{ r }}_{{ c }}" value="{{ rows[r][c] if rows[r][c] is not none else '' }}" {{ 'disabled' if ro }}></td>
+    {% endfor %}
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endmacro %}
+
+{% macro qres(b, basis) %}
+{% if b %}
+<table class="table table-sm table-bordered text-center align-middle small mb-2">
+  <thead><tr><th>Échantillon</th>{% for i in range(b.m) %}<th>Résultat {{ i + 1 }}</th>{% endfor %}<th>Max</th><th>Min</th><th>Écart</th></tr></thead>
+  <tbody>
+  {% for j in b.rows %}
+    <tr><td>{{ j.label }}</td>
+      {% for v in j['values'] %}{% set d = j.decisions[loop.index0] %}
+      <td class="{{ 'table-danger fw-bold' if d == 'NOT OK' }}">{{ v }} <span class="badge {{ 'bg-danger' if d == 'NOT OK' else 'bg-success' }}">{{ d }}</span></td>{% endfor %}
+      <td>{{ j.max }}</td><td>{{ j.min }}</td><td class="{{ 'table-warning' if not j.spread_ok }}">{{ j.spread }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<div class="small mb-2">Mode : <strong>{{ b.mode if b.mode is not none else '—' }}</strong> · Médiane : <strong>{{ b.median }}</strong></div>
+{% endif %}
+{% endmacro %}
+
+{% block content %}
+{% set ro = readonly %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <h3 class="mb-1"><i class="bi bi-clipboard2-data"></i> Étude d'homogénéité et de stabilité — {{ trial.name }}</h3>
+    <div class="text-muted">FTE 006 v06 · Essais qualitatifs ordinaux · ISO/IEC 17043:2023 Annexe B.2.4 · Campagne {{ trial.campaign.reference }}</div>
+  </div>
+  <div class="d-flex gap-2 align-items-center">
+    {% if record and record.status == 'validated' %}
+      <span class="badge bg-success fs-6"><i class="bi bi-lock-fill"></i> Validée le {{ record.validated_at.strftime('%d/%m/%Y') }}</span>
+    {% else %}<span class="badge bg-secondary fs-6">Brouillon</span>{% endif %}
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('homogeneity.assess', trial_id=trial.id) }}">Évaluation simplifiée</a>
+  </div>
+</div>
+
+{% for w in res.warnings %}<div class="alert alert-warning py-2">{{ w }}</div>{% endfor %}
+{% if ro %}<div class="alert alert-info py-2">Étude validée : les données sont verrouillées.
+  {% if can_validate %}<form method="post" class="d-inline"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-primary ms-2">Rouvrir pour modification</button></form>{% endif %}</div>{% endif %}
+
+<form method="post" autocomplete="off">
+<input type="hidden" name="action" value="save" id="study-action">
+
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <h5 class="fw-bold">Identification et paramètres</h5>
+  <div class="row g-3">
+    <div class="col-md-4"><label class="form-label small">Référence de la campagne</label><input class="form-control" name="campaign_ref" value="{{ inputs.meta.campaign_ref }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Référence de l'échantillon testé</label><input class="form-control" name="sample_ref" value="{{ inputs.meta.sample_ref }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Méthode testée</label><input class="form-control" name="method" value="{{ inputs.meta.method }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Valeur de référence : médiane ou mode ?</label>
+      <select class="form-select" name="basis" {{ 'disabled' if ro }}>
+        <option value="median" {{ 'selected' if inputs.basis == 'median' }}>Médiane</option>
+        <option value="mode" {{ 'selected' if inputs.basis == 'mode' }}>Mode</option>
+      </select></div>
+    <div class="col-md-4"><label class="form-label small">± classe de différence par rapport à la valeur assignée</label>
+      <input class="form-control text-end" name="tolerance" placeholder="ex. 0,5 (échelle 1-5) ou 1 (échelle 1-8)" value="{{ inputs.tolerance if inputs.tolerance is not none else '' }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4 d-flex align-items-end">
+      {% if res.reference is not none %}<div class="alert alert-info py-2 mb-0 w-100">Valeur de référence ({{ 'mode' if res.basis == 'mode' else 'médiane' }}) : <strong>{{ res.reference }}</strong> · tolérance ± {{ res.tolerance }}</div>{% endif %}
+    </div>
+    <div class="col-md-4"><label class="form-label small">Date des essais d'homogénéité</label><input type="date" class="form-control" name="hom_date" value="{{ inputs.meta.hom_date }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Date de fin de l'essai d'aptitude</label><input type="date" class="form-control" name="end_round_date" value="{{ inputs.meta.end_round_date }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Date(s) des essais de stabilité</label><input class="form-control" name="stab_date" value="{{ inputs.meta.stab_date }}" {{ 'disabled' if ro }}></div>
+  </div>
+</div></div>
+
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <h5 class="fw-bold">I) Vérification de l'homogénéité (ISO/IEC 17043:2023, annexe B.2.4)</h5>
+  <p class="text-muted small">Jusqu'à {{ hom_g }} échantillons et {{ max_m }} prises d'essai. Un résultat est « NOT OK » s'il s'écarte de la valeur de référence de plus que la tolérance ; l'écart entre le maximum et le minimum d'un échantillon doit aussi rester dans la tolérance.</p>
+  {{ qgrid('hom', inputs.hom.rows, hom_g, max_m, ro, codes=inputs.hom.codes) }}
+  {% if res.hom %}
+    {{ qres(res.hom, res.basis) }}
+    <div class="small mb-1">Mode de tous les résultats : <strong>{{ res.mode if res.mode is not none else '—' }}</strong> · Médiane : <strong>{{ res.median }}</strong></div>
+    <div class="alert {{ 'alert-success' if res.hom.all_ok else 'alert-danger' }} mb-2"><strong>Décision sur l'homogénéité :</strong> {{ res.hom.text }}
+      {% if res.hom.eliminated %}<div class="small mt-1">À éliminer (en rouge) : {{ res.hom.eliminated|join(', ') }}</div>{% endif %}
+      {% if res.hom.range_issue %}<div class="small mt-1">Un écart max − min dépasse la tolérance : vérifier ou, si possible, remplacer par d'autres résultats.</div>{% endif %}</div>
+  {% endif %}
+  <label class="form-label small mt-1">Résultat éliminé s'il y a lieu</label>
+  <input class="form-control form-control-sm" name="eliminated_note" value="{{ inputs.meta.eliminated_note }}" {{ 'disabled' if ro }}>
+</div></div>
+
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <h5 class="fw-bold">II) Vérification de la stabilité</h5>
+  <h6 class="fw-bold mt-2">II.1 — Stabilité à la fin de l'essai d'aptitude</h6>
+  {{ qgrid('stab', inputs.stab_end.rows, stab_g, max_m, ro) }}
+  {% if res.stab_end %}{{ qres(res.stab_end, res.basis) }}
+    <div class="small text-muted mb-1">{{ res.stab_end.text_block }}</div>
+    <div class="small mb-1">{{ 'Mode' if res.basis == 'mode' else 'Médiane' }} après : <strong>{{ res.stab_end.after }}</strong> contre {{ res.reference }} avant</div>
+    <div class="alert {{ 'alert-danger' if res.stab_end.unstable else 'alert-success' }} py-2"><strong>Décision (début / fin de campagne) :</strong> {{ res.stab_end.text }}</div>{% endif %}
+
+  <h6 class="fw-bold mt-4">II.2 — Stabilité au cours du stockage</h6>
+  <select class="form-select form-select-sm mb-2" name="storage_active" style="max-width:420px" {{ 'disabled' if ro }}>
+    <option value="">— Essais de stabilité pendant le stockage ? —</option>
+    <option value="no" {{ 'selected' if inputs.storage.active is sameas false }}>Non réalisés</option>
+    <option value="yes" {{ 'selected' if inputs.storage.active is sameas true }}>Réalisés</option>
+  </select>
+  {% if inputs.storage.active %}
+    {% set titles = ['Essai de stabilité N° 1', 'Essai de stabilité N° 2', 'Essai de stabilité N° 3', 'Après la réception du dernier résultat des participants'] %}
+    {% set prefixes = ['s1', 's2', 's3', 'sf'] %}
+    {% set keys = ['rows1', 'rows2', 'rows3', 'rows_final'] %}
+    <div class="row g-3">
+    {% for k in range(4) %}
+      <div class="col-xl-6"><div class="fw-semibold">{{ titles[k] }}</div>
+        {{ qgrid(prefixes[k], inputs.storage[keys[k]], stab_g, max_m, ro) }}
+        {% set b = res.storage[k] if res.storage|length > k else none %}
+        {% if b %}<div class="small mb-1">{{ 'Mode' if res.basis == 'mode' else 'Médiane' }} : <strong>{{ b.after }}</strong> {{ badge(not b.unstable, 'Stable', 'Non stable') }}</div>{% endif %}
+      </div>
+    {% endfor %}
+    </div>
+    {% if res.stability and res.stability.storage %}<div class="alert {{ 'alert-danger' if res.stability.storage == 'Les échantillons ne sont pas stables' else 'alert-success' }} py-2 mt-2"><strong>Décision (stockage) :</strong> {{ res.stability.storage }}</div>{% endif %}
+  {% endif %}
+
+  <h6 class="fw-bold mt-4">II.3 — Stabilité au cours du transport</h6>
+  <div class="row g-2 mb-2"><div class="col-md-5">
+    <select class="form-select form-select-sm" name="transport_active" {{ 'disabled' if ro }}>
+      <option value="">— Essai de transport ? —</option>
+      <option value="no" {{ 'selected' if inputs.transport.active is sameas false }}>Non réalisé</option>
+      <option value="yes" {{ 'selected' if inputs.transport.active is sameas true }}>Réalisé</option>
+    </select></div>
+    <div class="col-md-7"><input class="form-control form-control-sm" name="transport_desc" placeholder="Conditions de simulation de l'effet du transport" value="{{ inputs.meta.transport_desc }}" {{ 'disabled' if ro }}></div></div>
+  {% if inputs.transport.active %}
+    {{ qgrid('trn', inputs.transport.rows, stab_g, max_m, ro) }}
+    {% if res.transport %}{{ qres(res.transport, res.basis) }}
+      <div class="alert {{ 'alert-danger' if res.transport.unstable else 'alert-success' }} py-2"><strong>Décision (transport) :</strong> {{ res.transport.text }}</div>{% endif %}
+  {% endif %}
+</div></div>
+
+{% if res.conclusion %}
+<div class="card shadow-sm mb-3 border-success"><div class="card-body">
+  <h5 class="fw-bold">III) Récapitulatif des décisions</h5>
+  <table class="table table-sm">
+    <tr><td style="width:55%">Homogénéité de l'entité soumise à l'essai d'aptitude</td><td>{{ res.hom.text }}</td></tr>
+    <tr><td>Stabilité entre le début et la fin de la campagne</td><td>{{ res.stability.end or '—' }}</td></tr>
+    <tr><td>Stabilité au cours de la campagne (stockage)</td><td>{{ res.stability.storage or '—' }}</td></tr>
+    <tr><td>Stabilité après simulation des conditions de transport</td><td>{{ res.stability.transport or '—' }}</td></tr>
+  </table>
+  <div class="alert {{ 'alert-success' if res.conclusion.ok else 'alert-danger' }} fs-6 mb-0">
+    <strong>Décision sur la stabilité et l'homogénéité de l'entité soumise à l'essai d'aptitude :</strong><br>{{ res.conclusion.text }}
+    {% if res.conclusion.provisional %}<div class="small mt-1">Conclusion provisoire : l'étude de stabilité II.1 est à compléter.</div>{% endif %}
+  </div>
+</div></div>
+{% else %}
+<div class="alert alert-info">Saisissez les résultats d'homogénéité (au moins un échantillon, avec une valeur répétée si vous choisissez le mode) et la tolérance, puis cliquez sur « Calculer et enregistrer ».</div>
+{% endif %}
+
+{% if not ro %}
+<div class="d-flex flex-wrap gap-2 mb-5">
+  <button type="submit" class="btn btn-primary" onclick="document.getElementById('study-action').value='save'"><i class="bi bi-calculator"></i> Calculer et enregistrer</button>
+  {% if can_validate %}<button type="submit" class="btn btn-success" onclick="document.getElementById('study-action').value='validate'; return confirm('Valider l\'étude ? Elle sera verrouillée et son résultat reporté sur l\'essai.');"><i class="bi bi-check2-circle"></i> Valider l'étude</button>{% endif %}
+</div>
+{% endif %}
+</form>
+{% endblock %}
