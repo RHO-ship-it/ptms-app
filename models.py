@@ -410,3 +410,34 @@ class HomogeneityStudy(db.Model):
     validated_at = db.Column(db.DateTime, nullable=True)
 
     trial = db.relationship("Trial", backref=db.backref("homogeneity_studies", cascade="all, delete-orphan"))
+
+
+class Parcel(db.Model):
+    """Colis envoyé à un laboratoire pour une campagne : suivi, réception et échantillons reçus (par essai)."""
+    __tablename__ = "parcels"
+    __table_args__ = (db.UniqueConstraint("campaign_id", "laboratory_id", name="uq_parcel_campaign_lab"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey("campaigns.id"), nullable=False)
+    laboratory_id = db.Column(db.Integer, db.ForeignKey("laboratories.id"), nullable=False)
+    carrier = db.Column(db.String(50), nullable=True)
+    tracking_number = db.Column(db.String(100), nullable=True)
+    dispatch_date = db.Column(db.Date, nullable=True)
+    dispatch_confirmed = db.Column(db.Boolean, default=False, nullable=False)
+    sample_quantity = db.Column(db.Integer, nullable=True)       # nombre total d'échantillons dans le colis
+    received = db.Column(db.Boolean, default=False, nullable=False)
+    reception_date = db.Column(db.DateTime, nullable=True)
+    received_by = db.Column(db.String(120), nullable=True)
+    qr_token = db.Column(db.String(64), unique=True, nullable=True)
+    items = db.Column(db.Text, nullable=True)                    # JSON {clé d'essai: {"received": true, "at": "..."}}
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    campaign = db.relationship("Campaign")
+    laboratory = db.relationship("Laboratory")
+
+    def items_dict(self):
+        import json
+        try:
+            return json.loads(self.items) if self.items else {}
+        except ValueError:
+            return {}

@@ -69,6 +69,7 @@
             <i class="bi bi-box-seam text-primary" style="font-size:18px;"></i>
             <span class="ptms-card-title">Matrice d'Expédition Colis & Réception Échantillons</span>
         </div>
+        {% if selected_campaign %}<a href="{{ url_for('parcels.admin', campaign_id=selected_campaign.id) }}" class="btn btn-primary btn-sm"><i class="bi bi-box-seam me-1"></i>Gérer les colis (par laboratoire)</a>{% endif %}
     </div>
     <div class="ptms-card-body p-0">
     <form id="mass-shipping-form" action="{{ url_for('participants.update_mass_shipping') }}" method="POST">

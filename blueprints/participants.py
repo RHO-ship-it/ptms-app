@@ -4,7 +4,7 @@ import os
 import uuid
 from datetime import date, datetime
 
-from flask import (Blueprint, render_template, redirect, url_for, request, flash,
+from flask import (Blueprint, render_template, redirect, url_for, request, flash, abort,
                     send_file, current_app, send_from_directory)
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
@@ -50,7 +50,23 @@ def portal():
 
     forms = forms_query.all()
     today = date.today()
+
+    # Colis du laboratoire pour la campagne (un colis, plusieurs essais)
+    parcel = groups = pstate = closing = None
+    if selected_campaign and forms:
+        from blueprints.parcels import get_parcel, trial_groups, parcel_state
+        from blueprints.sheets import load_config, sheet_key_of
+        parcel = get_parcel(selected_campaign.id, current_user.laboratory_id)
+        if parcel:
+            cfg = load_config(selected_campaign)
+            groups = trial_groups(forms)
+            for g in groups:
+                g["tab"] = sheet_key_of(cfg, g["forms"][0].trial) or "identification"
+            pstate = parcel_state(parcel, forms)
+            dues = [f.trial.due_date for f in forms if f.trial.due_date]
+            closing = min(dues) if dues else None
     return render_template("participants/portal.html",
+                           parcel=parcel, groups=groups, pstate=pstate, closing=closing,
                            forms=forms,
                            campaigns=campaigns,
                            selected_campaign=selected_campaign,
@@ -588,27 +604,19 @@ def export_validation():
 
 @participants_bp.route("/scan-qr/<qr_token>", methods=["GET", "POST"])
 def scan_qr(qr_token):
-    """
-    Page publique / scannable pour afficher les métadonnées de l'échantillon
-    et valider la réception du colis avec horodatage temps réel.
-    """
-    form = ParticipantForm.query.filter_by(qr_token=qr_token).first_or_404()
-
+    """Page publique (QR du colis) : informations du colis et accusé de réception horodaté."""
+    from blueprints.parcels import find_parcel_by_token, receive_parcel, trial_groups, lab_forms
+    parcel = find_parcel_by_token(qr_token)
+    if parcel is None:
+        abort(404)
     if request.method == "POST":
-        form.received = True
-        form.reception_date = datetime.utcnow()
-        db.session.commit()
-
-        log_action(
-            "scan_reception_qr",
-            entity_type="ParticipantForm",
-            entity_id=form.id,
-            details=f"Réception du colis d'échantillon {form.sample_code or form.id} validée via QR code par {form.laboratory.code} à {form.reception_date.strftime('%d/%m/%Y %H:%M:%S')}",
-        )
-        flash(f"✅ Réception du colis confirmée avec succès le {form.reception_date.strftime('%d/%m/%Y à %H:%M:%S')}.", "success")
+        if not parcel.received:
+            receive_parcel(parcel, f"QR code ({parcel.laboratory.code})")
+        flash(f"✅ Réception du colis confirmée le {parcel.reception_date.strftime('%d/%m/%Y à %H:%M:%S')}.", "success")
         return redirect(url_for("participants.scan_qr", qr_token=qr_token))
-
-    return render_template("participants/scan_reception.html", form=form)
+    groups = trial_groups(lab_forms(parcel.campaign_id, parcel.laboratory_id))
+    dues = [g["forms"][0].trial.due_date for g in groups if g["forms"][0].trial.due_date]
+    return render_template("parcels/scan.html", parcel=parcel, groups=groups, due=min(dues) if dues else None)
 
 
 @participants_bp.route("/form/<int:form_id>/confirm-reception", methods=["POST"])
@@ -625,6 +633,8 @@ def confirm_reception(form_id):
     form.received = True
     form.reception_date = datetime.utcnow()
     db.session.commit()
+    from blueprints.parcels import sync_from_form
+    sync_from_form(form)
 
     log_action("confirm_reception", entity_type="ParticipantForm", entity_id=form.id,
                details=f"Réception du colis pour {form.trial.name} confirmée par {current_user.full_name}")
@@ -668,6 +678,8 @@ def update_shipping(form_id):
     form.ensure_qr_token()
 
     db.session.commit()
+    from blueprints.parcels import sync_from_form
+    sync_from_form(form)
 
     log_action("update_shipping", entity_type="ParticipantForm", entity_id=form.id,
                details=f"Infos colis mises à jour pour {form.laboratory.code} (Tracking: {form.tracking_number})")
@@ -684,6 +696,7 @@ def update_mass_shipping():
     form_ids = request.form.getlist("form_ids")
     campaign_id = request.form.get("campaign_id")
     count = 0
+    touched = []
     for fid_str in form_ids:
         fid = int(fid_str)
         form = ParticipantForm.query.get(fid)
@@ -701,10 +714,14 @@ def update_mass_shipping():
                 
             if updated:
                 count += 1
+                touched.append(form)
                 form.ensure_qr_token()
 
     if count > 0:
         db.session.commit()
+        from blueprints.parcels import sync_from_form
+        for form in touched:
+            sync_from_form(form)
         log_action("update_mass_shipping", entity_type="Campaign", entity_id=campaign_id,
                    details=f"Mise à jour logistique en masse pour {count} formulaires")
         flash(f"{count} expéditions mises à jour.", "success")

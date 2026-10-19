@@ -114,283 +114,162 @@
     </div>
   </div>
 
-  <!-- ══ CARTES ESSAIS ════════════════════════════════════════════════════ -->
+  <!-- ══ COLIS (un colis par campagne, plusieurs essais) ═══════════════════ -->
   {% if forms %}
+  {% macro step_dot(done, icon, label) %}
+  <div class="d-flex flex-column align-items-center gap-1" style="z-index:2;">
+    <div style="width:28px;height:28px;border-radius:50%;background:{% if done %}linear-gradient(135deg,#10b981,#059669){% else %}#e5e7eb{% endif %};display:flex;align-items:center;justify-content:center;box-shadow:{% if done %}0 2px 8px rgba(16,185,129,.35){% else %}none{% endif %};">
+      <i class="bi bi-{{ icon }}" style="font-size:12px;color:{% if done %}white{% else %}#9ca3af{% endif %};"></i>
+    </div>
+    <span class="text-center" style="font-size:9.5px;color:{% if done %}#059669{% else %}#9ca3af{% endif %};font-weight:{% if done %}600{% else %}400{% endif %};line-height:1.2;max-width:54px;">{{ label }}</span>
+  </div>
+  {% endmacro %}
+
+  {% if parcel %}
+  {% set items = parcel.items_dict() %}
+  {% set n_checked = namespace(c=0) %}
+  {% for g in groups %}{% if g.key in items %}{% set n_checked.c = n_checked.c + 1 %}{% endif %}{% endfor %}
+  {% set pct = 25 if pstate.shipped else 0 %}
+  {% if pstate.received %}{% set pct = 50 %}{% endif %}{% if pstate.submitted %}{% set pct = 75 %}{% endif %}{% if pstate.validated %}{% set pct = 100 %}{% endif %}
+  {% set days_left = (closing - today).days if closing else none %}
   <div class="row g-4">
-    {% for f in forms %}
-    {% set is_late = f.status == 'pending' and f.trial.due_date and f.trial.due_date < today %}
-    {% set days_left = (f.trial.due_date - today).days if f.trial.due_date else none %}
-
-    <div class="col-12 col-xl-6">
-      <div class="card border-0 shadow-sm h-100 position-relative overflow-hidden"
-           style="border-radius:16px;{% if is_late %}border-left:4px solid #ef4444!important;{% elif f.status == 'validated' %}border-left:4px solid #10b981!important;{% elif f.status == 'submitted' %}border-left:4px solid #3b82f6!important;{% else %}border-left:4px solid #f59e0b!important;{% endif %}">
-
-        <!-- Bandeau type d'essai -->
-        <div class="position-absolute top-0 end-0 m-2">
-          <span class="badge rounded-pill px-3 py-2
-            {% if f.trial.trial_type == 'quantitative' %}bg-primary
-            {% elif f.trial.trial_type == 'qualitative' %}bg-success
-            {% else %}bg-warning text-dark{% endif %}"
-            style="font-size:11px;">
-            <i class="bi bi-{% if f.trial.trial_type == 'quantitative' %}calculator{% elif f.trial.trial_type == 'qualitative' %}check2-circle{% else %}palette{% endif %} me-1"></i>
-            {{ f.trial.type_label() }}
-          </span>
+   <div class="col-12 col-xl-8">
+    <div class="card border-0 shadow-sm position-relative overflow-hidden" style="border-radius:16px;border-left:4px solid {{ '#10b981' if pstate.validated else ('#3b82f6' if pstate.submitted else '#f59e0b') }}!important;">
+      <div class="position-absolute top-0 end-0 m-2"><span class="badge rounded-pill bg-primary px-3 py-2" style="font-size:11px;"><i class="bi bi-box-seam me-1"></i>Colis</span></div>
+      <div class="card-body p-4">
+        <h5 class="fw-bold mb-0">Colis {{ selected_campaign.reference }}</h5>
+        <div class="text-muted small"><i class="bi bi-diagram-3 me-1"></i>{{ selected_campaign.reference }} — {{ selected_campaign.name[:45] }}</div>
+        <div class="d-flex flex-wrap gap-2 mt-2">
+          <span class="badge bg-light text-dark border small"><i class="bi bi-flask me-1"></i>{{ groups|length }} essai(s)</span>
+          <span class="badge bg-light text-dark border small"><i class="bi bi-tag me-1"></i>{{ forms|length }} paramètre(s)</span>
+          {% if parcel.sample_quantity %}<span class="badge bg-light text-dark border small"><i class="bi bi-boxes me-1"></i>{{ parcel.sample_quantity }} échantillon(s)</span>{% endif %}
+          {% if current_user.laboratory and current_user.laboratory.iso17025_accredited %}<span class="badge px-2" style="background:#dbeafe;color:#1e40af;font-size:10.5px;"><i class="bi bi-patch-check-fill me-1"></i>ISO 17025</span>{% endif %}
         </div>
 
-        <div class="card-body p-4">
-          <!-- En-tête essai -->
-          <div class="mb-3">
-            <div class="d-flex align-items-start gap-2 mb-1">
-              <div>
-                <h5 class="fw-bold mb-0">{{ f.trial.name }}</h5>
-                <div class="text-muted small">
-                  <i class="bi bi-diagram-3 me-1"></i>{{ f.trial.campaign.reference }} — {{ f.trial.campaign.name[:35] }}
-                </div>
-              </div>
-            </div>
-
-            {% if f.trial.parameter %}
-            <div class="d-flex flex-wrap gap-2 mt-2">
-              <span class="badge bg-light text-dark border small">
-                <i class="bi bi-tag me-1"></i>{{ f.trial.parameter }}
-                {% if f.trial.unit %} ({{ f.trial.unit }}){% endif %}
-              </span>
-              {% if f.trial.method %}
-              <span class="badge bg-light text-dark border small">
-                <i class="bi bi-journal-code me-1"></i>{{ f.trial.method[:25] }}
-              </span>
-              {% endif %}
-              {% if f.submission and f.submission.iso17025_accredited %}
-              <span class="badge px-2" style="background:#dbeafe;color:#1e40af;font-size:10.5px;">
-                <i class="bi bi-patch-check-fill me-1"></i>ISO 17025
-              </span>
-              {% endif %}
-            </div>
-            {% endif %}
+        <!-- Étapes du colis -->
+        <div class="my-4">
+          <div class="d-flex align-items-center justify-content-between position-relative" style="padding:0 8px;">
+            <div class="position-absolute" style="top:50%;left:8px;right:8px;height:3px;background:#e5e7eb;z-index:0;transform:translateY(-50%);border-radius:2px;"></div>
+            <div class="position-absolute" style="top:50%;left:8px;width:{{ pct }}%;height:3px;background:linear-gradient(90deg,#3b82f6,#10b981);z-index:1;transform:translateY(-50%);border-radius:2px;"></div>
+            {{ step_dot(pstate.shipped, 'truck', 'Expédié') }}
+            {{ step_dot(pstate.received, 'box-seam-fill', 'Reçu') }}
+            {{ step_dot(pstate.submitted, 'pencil-fill', 'Soumis') }}
+            {{ step_dot(pstate.confirmed, 'shield-check', 'Confirmé') }}
+            {{ step_dot(pstate.validated, 'patch-check-fill', 'Validé') }}
           </div>
+        </div>
 
-          <!-- ── TIMELINE DE STATUT ──────────────────────────────────── -->
-          <div class="mb-4">
-            {% set step_ship = f.tracking_number is not none and f.tracking_number %}
-            {% set step_recv = f.received %}
-            {% set step_sub  = f.submission is not none %}
-            {% set step_conf = f.submission and f.submission.confirmed %}
-            {% set step_val  = f.status == 'validated' %}
-
-            <div class="d-flex align-items-center justify-content-between position-relative" style="padding:0 8px;">
-              <!-- Ligne de fond -->
-              <div class="position-absolute" style="top:50%;left:8px;right:8px;height:3px;background:#e5e7eb;z-index:0;transform:translateY(-50%);border-radius:2px;"></div>
-              <!-- Ligne de progression -->
-              {% set pct = namespace(v=0) %}
-              {% if step_ship %}{% set pct.v = 25 %}{% endif %}
-              {% if step_recv %}{% set pct.v = 50 %}{% endif %}
-              {% if step_sub  %}{% set pct.v = 75 %}{% endif %}
-              {% if step_val  %}{% set pct.v = 100 %}{% endif %}
-              <div class="position-absolute" style="top:50%;left:8px;width:{{ pct.v }}%;height:3px;background:linear-gradient(90deg,#3b82f6,#10b981);z-index:1;transform:translateY(-50%);border-radius:2px;transition:width .5s;"></div>
-
-              {% macro step_dot(done, icon, label) %}
-              <div class="d-flex flex-column align-items-center gap-1" style="z-index:2;">
-                <div style="width:28px;height:28px;border-radius:50%;
-                  background:{% if done %}linear-gradient(135deg,#10b981,#059669){% else %}#e5e7eb{% endif %};
-                  display:flex;align-items:center;justify-content:center;
-                  box-shadow:{% if done %}0 2px 8px rgba(16,185,129,.35){% else %}none{% endif %};
-                  transition:all .3s;">
-                  <i class="bi bi-{{ icon }}" style="font-size:12px;color:{% if done %}white{% else %}#9ca3af{% endif %};"></i>
-                </div>
-                <span class="text-center" style="font-size:9.5px;color:{% if done %}#059669{% else %}#9ca3af{% endif %};font-weight:{% if done %}600{% else %}400{% endif %};line-height:1.2;max-width:54px;">{{ label }}</span>
-              </div>
-              {% endmacro %}
-
-              {{ step_dot(step_ship, 'truck', 'Expédié') }}
-              {{ step_dot(step_recv, 'box-seam-fill', 'Reçu') }}
-              {{ step_dot(step_sub,  'pencil-fill', 'Soumis') }}
-              {{ step_dot(step_conf, 'shield-check', 'Confirmé') }}
-              {{ step_dot(step_val,  'patch-check-fill', 'Validé') }}
+        <div class="row g-2 mb-3">
+          {% if parcel.received %}
+          <div class="col-12 col-md-6">
+            <div class="p-2 rounded-3 h-100" style="background:#f8fafc;border:1px solid #e2e8f0;">
+              <div class="small text-muted mb-1"><i class="bi bi-box me-1"></i>Échantillons du colis</div>
+              <div class="fw-bold fs-6">{{ groups|length }} essai(s) · {{ forms|length }} paramètre(s)</div>
+              <div class="text-muted small" style="font-size:11px;"><i class="bi bi-ui-checks me-1"></i>{{ n_checked.c }} / {{ groups|length }} reçu(s) cochés</div>
             </div>
           </div>
-
-          <!-- ── INFOS COLIS & SUIVI LOGISTIQUE ───────────────────── -->
-          <div class="row g-2 mb-3">
-            <div class="col-6">
-              <div class="p-2 rounded-3" style="background:#f8fafc;border:1px solid #e2e8f0;">
-                <div class="small text-muted mb-1"><i class="bi bi-box me-1"></i>Code Échantillon</div>
-                <code class="small fw-bold text-dark fs-6" style="font-family:monospace;">{{ f.sample_code or ('ECH-' ~ f.id) }}</code>
-                {% if f.sample_quantity %}
-                <div class="text-muted small mt-1" style="font-size:11px;"><i class="bi bi-boxes me-1"></i>{{ f.sample_quantity }} échantillon(s)</div>
-                {% endif %}
-              </div>
-            </div>
-            <div class="col-6">
-              {% if f.received %}
-              <div class="p-2 rounded-3" style="background:#f0fdf4;border:1px solid #bbf7d0;">
-                <div class="small text-muted mb-1"><i class="bi bi-check-circle-fill text-success me-1"></i>Statut Réception</div>
-                <div class="small fw-semibold text-success">{{ f.reception_date.strftime('%d/%m/%Y %H:%M') if f.reception_date else 'Confirmée' }}</div>
-              </div>
-              {% elif f.dispatch_confirmed or f.tracking_number %}
-              <div class="p-2 rounded-3" style="background:#eff6ff;border:1px solid #bfdbfe;">
-                <div class="small text-muted mb-1"><i class="bi bi-truck text-primary me-1"></i>Statut Colis</div>
-                <div class="small text-primary fw-bold"><i class="bi bi-send-check me-1"></i>Expédié</div>
-                {% if f.dispatch_date %}<div class="text-muted small mt-0.5" style="font-size:11px;"><i class="bi bi-calendar-event me-1"></i>{{ f.dispatch_date.strftime('%d/%m/%Y') }}</div>{% endif %}
-              </div>
-              {% else %}
-              <div class="p-2 rounded-3" style="background:#fff7ed;border:1px solid #fed7aa;">
-                <div class="small text-muted mb-1"><i class="bi bi-clock text-warning me-1"></i>Statut Colis</div>
-                <div class="small text-warning fw-semibold">En préparation</div>
-              </div>
-              {% endif %}
-            </div>
-
-            {% if f.dispatch_confirmed or f.tracking_number %}
-            <div class="col-12">
-              <div class="p-3 rounded-3" style="background:#f0f9ff;border:1px solid #bae6fd;">
-                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
-                  <div class="d-flex align-items-center gap-2">
-                    <i class="bi bi-truck text-info fs-5"></i>
-                    <div>
-                      <div class="small text-muted" style="font-size:11px;">{{ f.carrier or 'Transporteur' }}</div>
-                      <code class="fw-bold text-info fs-6">{{ f.tracking_number or 'N° en attente' }}</code>
-                    </div>
-                  </div>
-                  <div class="d-flex gap-2">
-                    {% if f.tracking_number %}
-                    {% set c = (f.carrier or '')|lower %}
-                    {% if 'dhl' in c %}
-                    <a href="https://www.dhl.com/global-en/home/tracking.html?tracking-id={{ f.tracking_number }}" target="_blank" class="btn btn-sm btn-info text-white py-1 px-2" style="font-size:11.5px;"><i class="bi bi-box-arrow-up-right me-1"></i>Suivre DHL</a>
-                    {% elif 'poste' in c or 'rapid' in c %}
-                    <a href="https://www.rapidposte.poste.tn/fr/Item_Events.asp?Item_ID={{ f.tracking_number }}" target="_blank" class="btn btn-sm btn-info text-white py-1 px-2" style="font-size:11.5px;"><i class="bi bi-box-arrow-up-right me-1"></i>Suivre RapidPoste</a>
-                    {% endif %}
-                    {% endif %}
-
-                    <a href="{{ url_for('participants.qr_label', form_id=f.id) }}" target="_blank" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size:11.5px;" title="Afficher et imprimer le QR Code et l'étiquette">
-                      <i class="bi bi-qr-code-scan me-1"></i>Afficher QR Code
-                    </a>
-                  </div>
-                </div>
-
-                {% if f.sample_photo %}
-                <div class="mt-2 pt-2 border-top">
-                  <span class="small text-muted d-block mb-1"><i class="bi bi-camera me-1"></i>Photo de l'échantillon expédié :</span>
-                  <img src="{{ url_for('participants.serve_parcel_photo', form_id=f.id) }}" alt="Échantillon" class="rounded-2 border" style="max-height:110px; object-fit:contain;">
-                </div>
-                {% endif %}
-              </div>
-            </div>
-            {% endif %}
-          </div>
-
-          <!-- ── RÉSULTAT SOUMIS (aperçu) ───────────────────────────── -->
-          {% if f.submission %}
-          <div class="p-3 rounded-3 mb-3" style="background:linear-gradient(135deg,#f8fafc,#f1f5f9);border:1px solid #e2e8f0;">
-            <div class="d-flex align-items-center justify-content-between mb-2">
-              <span class="small fw-semibold text-dark">
-                <i class="bi bi-graph-up me-1 text-primary"></i>Résultat soumis
-              </span>
-              {% if f.submission.submitted_at %}
-              <span class="small text-muted">{{ f.submission.submitted_at.strftime('%d/%m/%Y %H:%M') }}</span>
-              {% endif %}
-            </div>
-            <div class="d-flex align-items-center gap-3 flex-wrap">
-              <div>
-                <span class="fw-bold fs-5">
-                  {{ f.submission.value if f.submission.value is not none else (f.submission.qualitative_result or '—') }}
-                  {% if f.submission.value is not none and f.trial.unit %}<small class="text-muted fs-6"> {{ f.trial.unit }}</small>{% endif %}
-                </span>
-                {% if f.submission.replicate_2 is not none %}
-                <div class="small text-muted">Réplicat 2 : {{ f.submission.replicate_2 }}</div>
-                {% endif %}
-              </div>
-
-              {% if f.trial.campaign.report_published %}
-              <div class="ms-auto" style="border-left:2px solid #e2e8f0; padding-left:12px;">
-                <div class="small fw-semibold text-muted mb-1">Évaluation finale</div>
-                {% if f.trial.trial_type == 'quantitative' and f.submission.z_score is not none %}
-                  {% set z = f.submission.z_score %}
-                  <span class="badge px-2 py-1 fs-6 {% if z | abs <= 2 %}bg-success{% elif z | abs <= 3 %}bg-warning text-dark{% else %}bg-danger{% endif %}">
-                    Z = {{ z }}
-                  </span>
-                {% elif f.trial.trial_type == 'qualitative' and f.submission.qualitative_conform is not none %}
-                  <span class="badge fs-6 {% if f.submission.qualitative_conform %}bg-success{% else %}bg-danger{% endif %}">
-                    {{ 'Conforme' if f.submission.qualitative_conform else 'Non conforme' }}
-                  </span>
-                {% else %}
-                  <span class="text-muted small">Éval. non dispo</span>
-                {% endif %}
-              </div>
-              {% endif %}
+          <div class="col-12 col-md-6">
+            <div class="p-2 rounded-3 h-100" style="background:#f0fdf4;border:1px solid #bbf7d0;">
+              <div class="small text-muted mb-1"><i class="bi bi-check-circle-fill text-success me-1"></i>Statut Réception</div>
+              <div class="small fw-semibold text-success">{{ parcel.reception_date.strftime('%d/%m/%Y %H:%M') if parcel.reception_date else 'Confirmée' }}</div>
             </div>
           </div>
-          {% endif %}
-
-          <!-- ── ÉCHÉANCE ────────────────────────────────────────────── -->
-          {% if f.trial.due_date %}
-          <div class="d-flex align-items-center justify-content-between mb-3">
-            <div class="d-flex align-items-center gap-2">
-              <i class="bi bi-calendar-event {% if is_late %}text-danger{% elif days_left != none and days_left <= 7 %}text-warning{% else %}text-muted{% endif %}"></i>
-              <span class="small {% if is_late %}text-danger fw-bold{% elif days_left != none and days_left <= 7 %}text-warning fw-semibold{% else %}text-muted{% endif %}">
-                {% if is_late %}
-                  ⚠ En retard — Clôture : {{ f.trial.due_date.strftime('%d/%m/%Y') }}
-                {% elif days_left == 0 %}
-                  🔴 Clôture AUJOURD'HUI
-                {% elif days_left is not none and days_left <= 7 %}
-                  ⏳ Clôture dans {{ days_left }} jour(s) — {{ f.trial.due_date.strftime('%d/%m/%Y') }}
-                {% else %}
-                  Clôture : {{ f.trial.due_date.strftime('%d/%m/%Y') }}
-                {% endif %}
-              </span>
+          {% else %}
+          <div class="col-12">
+            {% if pstate.shipped %}
+            <div class="p-2 rounded-3" style="background:#eff6ff;border:1px solid #bfdbfe;">
+              <div class="small text-muted mb-1"><i class="bi bi-truck text-primary me-1"></i>Statut Colis</div>
+              <div class="small text-primary fw-bold"><i class="bi bi-send-check me-1"></i>Expédié{% if parcel.dispatch_date %} le {{ parcel.dispatch_date.strftime('%d/%m/%Y') }}{% endif %}</div>
             </div>
-            {% if days_left is not none and days_left >= 0 %}
-            <!-- Mini countdown badge -->
-            <span id="countdown-{{ f.id }}" class="badge bg-light text-dark border"
-                  data-days="{{ days_left }}" style="font-size:11px;font-variant-numeric:tabular-nums;">
-              <i class="bi bi-hourglass-split me-1"></i>{{ days_left }}j
-            </span>
+            {% else %}
+            <div class="p-2 rounded-3" style="background:#fff7ed;border:1px solid #fed7aa;">
+              <div class="small text-muted mb-1"><i class="bi bi-clock text-warning me-1"></i>Statut Colis</div>
+              <div class="small text-warning fw-semibold">En préparation</div>
+            </div>
             {% endif %}
           </div>
           {% endif %}
 
-          <!-- ── ACTIONS ─────────────────────────────────────────────── -->
-          <div class="d-flex gap-2 flex-wrap">
-            {% if not f.received and not f.submission %}
-            <!-- Pas encore reçu -->
-            <form method="POST" action="{{ url_for('participants.confirm_reception', form_id=f.id) }}" class="d-inline">
-              <button type="submit" class="btn btn-sm btn-warning fw-semibold">
-                <i class="bi bi-box-seam me-1"></i>Confirmer réception colis
-              </button>
-            </form>
-            {% endif %}
-
-            <a href="{{ url_for('participants.submit_form', form_id=f.id) }}"
-               class="btn btn-sm {% if f.submission %}btn-outline-primary{% else %}btn-primary{% endif %} fw-semibold">
-              <i class="bi bi-{% if f.submission %}pencil{% else %}plus-circle{% endif %} me-1"></i>
-              {% if f.submission %}Modifier{% else %}Saisir résultat{% endif %}
-            </a>
-
-            {% if f.submission and not f.submission.confirmed %}
-            <a href="{{ url_for('participants.confirm_submission', form_id=f.id) }}"
-               class="btn btn-sm btn-success fw-semibold">
-              <i class="bi bi-shield-check me-1"></i>Confirmer
-            </a>
-            {% endif %}
-
-            <a href="{{ url_for('participants.qr_label', form_id=f.id) }}" target="_blank"
-               class="btn btn-sm btn-outline-secondary" title="QR Code / Étiquette">
-              <i class="bi bi-qr-code-scan"></i>
-            </a>
-
-            {% if f.submission %}
-            <a href="{{ url_for('participants.submission_summary_pdf', form_id=f.id) }}"
-               class="btn btn-sm btn-outline-danger" title="PDF">
-              <i class="bi bi-file-earmark-pdf"></i>
-            </a>
-            {% endif %}
+          {% if pstate.shipped %}
+          <div class="col-12">
+            <div class="p-3 rounded-3" style="background:#f0f9ff;border:1px solid #bae6fd;">
+              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2">
+                  <i class="bi bi-truck text-info fs-5"></i>
+                  <div><div class="small text-muted" style="font-size:11px;">{{ parcel.carrier or 'Transporteur' }}</div>
+                    <code class="fw-bold text-info fs-6">{{ parcel.tracking_number or 'N° en attente' }}</code></div>
+                </div>
+                <div class="d-flex gap-2">
+                  {% if parcel.tracking_number %}{% set c = (parcel.carrier or '')|lower %}
+                  {% if 'dhl' in c %}<a href="https://www.dhl.com/global-en/home/tracking.html?tracking-id={{ parcel.tracking_number }}" target="_blank" class="btn btn-sm btn-info text-white py-1 px-2" style="font-size:11.5px;"><i class="bi bi-box-arrow-up-right me-1"></i>Suivre DHL</a>
+                  {% elif 'poste' in c or 'rapid' in c %}<a href="https://www.rapidposte.poste.tn/fr/Item_Events.asp?Item_ID={{ parcel.tracking_number }}" target="_blank" class="btn btn-sm btn-info text-white py-1 px-2" style="font-size:11.5px;"><i class="bi bi-box-arrow-up-right me-1"></i>Suivre RapidPoste</a>{% endif %}
+                  {% endif %}
+                  <a href="{{ url_for('parcels.label', parcel_id=parcel.id) }}" target="_blank" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size:11.5px;"><i class="bi bi-qr-code-scan me-1"></i>Afficher QR Code</a>
+                </div>
+              </div>
+            </div>
           </div>
+          {% endif %}
+        </div>
 
+        {% if not parcel.received %}
+        <form method="POST" action="{{ url_for('parcels.receive', parcel_id=parcel.id) }}" class="mb-1">
+          <button type="submit" class="btn btn-warning fw-semibold"><i class="bi bi-box-seam me-1"></i>J'ai reçu le colis — confirmer la réception</button>
+        </form>
+        <div class="small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Les échantillons et le détail des essais s'affichent dès que la réception est confirmée.</div>
+        {% else %}
+
+        <!-- Échantillons reçus, essai par essai -->
+        <form method="POST" action="{{ url_for('parcels.samples', parcel_id=parcel.id) }}" class="mb-4" id="samplesForm">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div class="fw-semibold"><i class="bi bi-ui-checks me-1 text-primary"></i>Cochez les échantillons reçus</div>
+            <button type="button" class="btn btn-link btn-sm p-0" onclick="document.querySelectorAll('#samplesForm input[name=got]').forEach(function(c){c.checked=true});">Tout cocher</button>
+          </div>
+          <div class="list-group mb-2">
+            {% for g in groups %}
+            <label class="list-group-item d-flex align-items-center gap-3" style="cursor:pointer;">
+              <input class="form-check-input mt-0" type="checkbox" name="got" value="{{ g.key }}" {{ 'checked' if g.key in items }} style="width:1.2em;height:1.2em;">
+              <span class="flex-grow-1"><span class="fw-semibold">{{ g.name }}</span>
+                <span class="d-block small text-muted">{{ g.n }} paramètre(s){% if g.sample_code or g.sample %} · <code>{{ g.sample_code or g.sample }}</code>{% endif %}</span></span>
+              {% if g.key in items %}<span class="badge bg-success-subtle text-success border border-success-subtle">reçu</span>{% endif %}
+            </label>
+            {% endfor %}
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check2-square me-1"></i>Enregistrer les échantillons reçus</button>
+        </form>
+
+        <!-- Avancement des résultats par essai -->
+        <div class="fw-semibold mb-2"><i class="bi bi-graph-up me-1 text-primary"></i>Résultats par essai</div>
+        <div class="table-responsive mb-3"><table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr><th>Essai</th><th class="text-center">Soumis</th><th class="text-center">Confirmés</th><th></th></tr></thead>
+          <tbody>
+          {% for g in groups %}
+            <tr><td class="fw-semibold">{{ g.name }}</td>
+              <td class="text-center"><span class="badge {{ 'bg-success' if g.n_sub == g.n else ('bg-primary' if g.n_sub else 'bg-secondary') }}">{{ g.n_sub }} / {{ g.n }}</span></td>
+              <td class="text-center">{{ g.n_conf }} / {{ g.n_sub }}</td>
+              <td class="text-end"><a class="btn btn-sm btn-outline-primary py-0" href="{{ url_for('sheets.entry', campaign_id=selected_campaign.id, tab=g.tab) }}">{{ 'Modifier' if g.n_sub else 'Saisir' }}</a></td></tr>
+          {% endfor %}
+          </tbody></table></div>
+        {% endif %}
+
+        {% if closing %}
+        <div class="d-flex align-items-center gap-2 mt-3">
+          <i class="bi bi-calendar-event {% if days_left is not none and days_left < 0 %}text-danger{% elif days_left is not none and days_left <= 7 %}text-warning{% else %}text-muted{% endif %}"></i>
+          <span class="small {% if days_left is not none and days_left < 0 %}text-danger fw-bold{% elif days_left is not none and days_left <= 7 %}text-warning fw-semibold{% else %}text-muted{% endif %}">
+            {% if days_left < 0 %}⚠ Clôture dépassée — {{ closing.strftime('%d/%m/%Y') }}{% elif days_left == 0 %}🔴 Clôture AUJOURD'HUI{% elif days_left <= 7 %}⏳ Clôture dans {{ days_left }} jour(s) — {{ closing.strftime('%d/%m/%Y') }}{% else %}Clôture : {{ closing.strftime('%d/%m/%Y') }}{% endif %}
+          </span>
+        </div>
+        {% endif %}
+
+        <div class="d-flex gap-2 flex-wrap mt-3">
+          <a href="{{ url_for('sheets.entry', campaign_id=selected_campaign.id) }}" class="btn btn-primary fw-semibold"><i class="bi bi-pencil-square me-1"></i>Feuille de saisie</a>
+          <a href="{{ url_for('parcels.label', parcel_id=parcel.id) }}" target="_blank" class="btn btn-outline-secondary" title="QR Code / Étiquette"><i class="bi bi-qr-code-scan"></i></a>
         </div>
       </div>
     </div>
-    {% endfor %}
+   </div>
   </div>
-
+  {% endif %}
   {% else %}
   <!-- État vide -->
   <div class="d-flex flex-column align-items-center justify-content-center py-5 text-center">
