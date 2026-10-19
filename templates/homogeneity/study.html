@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+{% block title %}Étude d'homogénéité — {{ trial.name }}{% endblock %}
+
+{% macro n(v) %}{% if v is none %}—{% else %}{{ '%.6g'|format(v) }}{% endif %}{% endmacro %}
+{% macro badge(ok, yes, no) %}<span class="badge {{ 'bg-success' if ok else 'bg-danger' }}">{{ yes if ok else no }}</span>{% endmacro %}
+
+{% macro grid(prefix, rows, nrows, ncols, ro, codes=none, excl=none) %}
+<div class="table-responsive">
+<table class="table table-sm align-middle mb-2">
+  <thead><tr>
+    {% if codes is not none %}<th>Échantillon</th>{% endif %}
+    {% for c in range(ncols) %}<th class="text-center">Résultat {{ c + 1 }}</th>{% endfor %}
+    {% if excl is not none %}<th class="text-center" title="Échantillon éliminé (ex. test de Cochran)">Exclure</th>{% endif %}
+  </tr></thead>
+  <tbody>
+  {% for r in range(nrows) %}
+  <tr>
+    {% if codes is not none %}<td><input class="form-control form-control-sm" style="min-width:86px" name="hom_code_{{ r }}" value="{{ codes[r] }}" {{ 'disabled' if ro }}></td>{% endif %}
+    {% for c in range(ncols) %}
+    <td><input type="text" inputmode="decimal" class="form-control form-control-sm text-end" style="min-width:76px"
+               name="{{ prefix }}_{{ r }}_{{ c }}" value="{{ rows[r][c] if rows[r][c] is not none else '' }}" {{ 'disabled' if ro }}></td>
+    {% endfor %}
+    {% if excl is not none %}<td class="text-center"><input type="checkbox" class="form-check-input" name="hom_excl_{{ r }}" {{ 'checked' if r in excl }} {{ 'disabled' if ro }}></td>{% endif %}
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endmacro %}
+
+{% macro stab_block(b) %}
+{% if b and b.error %}<div class="alert alert-warning py-2">{{ b.error }}</div>
+{% elif b %}
+<table class="table table-sm w-auto mb-2">
+  <tr><td>Échantillons g / prises d'essai m</td><td class="text-end">{{ b.g }} / {{ b.m }}</td></tr>
+  <tr><td>Moyenne avant distribution (= homogénéité)</td><td class="text-end">{{ n(b.mean_before) }}</td></tr>
+  <tr><td>Moyenne après</td><td class="text-end">{{ n(b.mean_after) }}</td></tr>
+  <tr><td>Sw</td><td class="text-end">{{ n(b.sw) }}</td></tr>
+  <tr><td>Écart |avant − après| / limite 0,3 σpt</td><td class="text-end">{{ n(b.difference) }} / {{ n(b.limit) }}</td></tr>
+  <tr><td>Exigence B.4.1.3 (sr/σpt &lt; 0,5)</td><td class="text-end">{{ n(b.ratio) }} {{ badge(b.ratio_ok, '< 0,5', '≥ 0,5') }}</td></tr>
+  <tr><td><strong>Décision</strong></td><td class="text-end">{{ badge(b.stable, 'Stables', 'Non stables') }}</td></tr>
+</table>
+{% endif %}
+{% endmacro %}
+
+{% block content %}
+{% set ro = readonly %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <h3 class="mb-1"><i class="bi bi-clipboard2-data"></i> Étude d'homogénéité et de stabilité — {{ trial.name }}</h3>
+    <div class="text-muted">FTE 006 v06 · ISO 13528:2022 Annexe B · Campagne {{ trial.campaign.reference }} · {{ trial.parameter }}{% if trial.unit %} ({{ trial.unit }}){% endif %}</div>
+  </div>
+  <div class="d-flex gap-2 align-items-center">
+    {% if record and record.status == 'validated' %}
+      <span class="badge bg-success fs-6"><i class="bi bi-lock-fill"></i> Validée le {{ record.validated_at.strftime('%d/%m/%Y') }}</span>
+    {% else %}<span class="badge bg-secondary fs-6">Brouillon</span>{% endif %}
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('homogeneity.assess', trial_id=trial.id) }}">Évaluation simplifiée</a>
+  </div>
+</div>
+
+{% for w in res.warnings %}<div class="alert alert-warning py-2">{{ w }}</div>{% endfor %}
+{% if ro %}<div class="alert alert-info py-2">Étude validée : les données sont verrouillées.
+  {% if can_validate %}<form method="post" class="d-inline"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-primary ms-2">Rouvrir pour modification</button></form>{% endif %}</div>{% endif %}
+
+<form method="post" autocomplete="off">
+<input type="hidden" name="action" value="save" id="study-action">
+
+<!-- ═══ Identification ═══ -->
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <h5 class="fw-bold">Identification</h5>
+  <div class="row g-3">
+    <div class="col-md-4"><label class="form-label small">Référence de la campagne</label><input class="form-control" name="campaign_ref" value="{{ inputs.meta.campaign_ref }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Référence de l'échantillon testé</label><input class="form-control" name="sample_ref" value="{{ inputs.meta.sample_ref }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Méthode testée</label><input class="form-control" name="method" value="{{ inputs.meta.method }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Date des essais d'homogénéité</label><input type="date" class="form-control" name="hom_date" value="{{ inputs.meta.hom_date }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Date de fin de l'essai d'aptitude</label><input type="date" class="form-control" name="end_round_date" value="{{ inputs.meta.end_round_date }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Date des essais de stabilité</label><input type="date" class="form-control" name="stab_date" value="{{ inputs.meta.stab_date }}" {{ 'disabled' if ro }}></div>
+  </div>
+</div></div>
+
+<!-- ═══ σpt ═══ -->
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <h5 class="fw-bold">I.2 — σpt de TTS (campagnes antérieures / norme)</h5>
+  <div class="row g-3 mb-2">
+    <div class="col-md-4"><label class="form-label small">Mode d'expression du σpt</label>
+      <select class="form-select" name="sigma_mode" {{ 'disabled' if ro }}>
+        <option value="relative" {{ 'selected' if inputs.sigma.mode == 'relative' }}>Relatif (moyenne des σpt × x̿)</option>
+        <option value="absolute" {{ 'selected' if inputs.sigma.mode == 'absolute' }}>Absolu (moyenne des σpt)</option>
+        <option value="direct" {{ 'selected' if inputs.sigma.mode == 'direct' }}>Valeur directe</option>
+      </select></div>
+    <div class="col-md-4"><label class="form-label small">σpt direct (mode « valeur directe »)</label>
+      <input class="form-control text-end" name="sigma_direct" value="{{ inputs.sigma.direct if inputs.sigma.direct is not none else '' }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4 d-flex align-items-end"><div class="small text-muted">Relatif : σpt est exprimé en proportion de la moyenne (ex. 0,05 = 5 %).</div></div>
+  </div>
+  <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+    <thead><tr><th>Organisme / année</th><th>N° du rapport</th><th>Code échantillon</th><th class="text-end">σpt</th></tr></thead>
+    <tbody>{% for i in range(sigma_rows) %}
+      <tr>
+        <td><input class="form-control form-control-sm" name="sigma_org_{{ i }}" value="{{ inputs.sigma.labels[i].org }}" {{ 'disabled' if ro }}></td>
+        <td><input class="form-control form-control-sm" name="sigma_rep_{{ i }}" value="{{ inputs.sigma.labels[i].report }}" {{ 'disabled' if ro }}></td>
+        <td><input class="form-control form-control-sm" name="sigma_code_{{ i }}" value="{{ inputs.sigma.labels[i].code }}" {{ 'disabled' if ro }}></td>
+        <td style="width:140px"><input class="form-control form-control-sm text-end" name="sigma_ref_{{ i }}" value="{{ inputs.sigma.refs[i] if inputs.sigma.refs[i] is not none else '' }}" {{ 'disabled' if ro }}></td>
+      </tr>{% endfor %}</tbody></table></div>
+</div></div>
+
+<!-- ═══ I — Homogénéité ═══ -->
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <h5 class="fw-bold">I) Homogénéité des échantillons (ISO 13528:2022, annexe B)</h5>
+  <p class="text-muted small">Saisissez jusqu'à {{ max_g }} échantillons et {{ max_m }} prises d'essai, dans l'ordre de réalisation des essais. Un échantillon est pris en compte dès que son résultat 1 est renseigné ; tous doivent avoir le même nombre de résultats.</p>
+  {{ grid('hom', inputs.hom.rows, max_g, max_m, ro, codes=inputs.hom.codes, excl=inputs.hom.excluded) }}
+</div></div>
+
+{% if res.hom %}
+<!-- ═══ Tendances ═══ -->
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <h5 class="fw-bold">I.4 — Analyse de tendance (B.2.1)</h5>
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="fw-semibold mb-1">a) Distribution des résultats 1 à {{ res.hom.m }} selon l'ordre de réalisation</div>
+      {{ charts.individual }}
+      <table class="table table-sm w-auto small mt-2">
+        <tr><th>Résultat</th><th class="text-end">Pente</th><th class="text-end">p</th><th>Indication</th></tr>
+        {% for t in res.trends.individual %}<tr><td>{{ loop.index }}</td>
+          {% if t %}<td class="text-end">{{ n(t.slope) }}</td><td class="text-end">{{ '%.3f'|format(t.p_value) if t.p_value is not none else '—' }}</td>
+          <td>{{ 'tendance possible' if t.significant else 'aucune' }}</td>{% else %}<td colspan="3" class="text-muted">trop peu de points</td>{% endif %}</tr>{% endfor %}
+      </table>
+      <select class="form-select form-select-sm" name="trend_individual" {{ 'disabled' if ro }}>
+        <option value="">— Votre décision —</option>
+        <option value="none" {{ 'selected' if inputs.trend_individual == 'none' }}>Pas de tendance significative</option>
+        <option value="present" {{ 'selected' if inputs.trend_individual == 'present' }}>Présence de tendance significative (B.2.1.a)</option>
+      </select>
+      {% if res.trend_texts.individual %}<div class="small mt-1 {{ 'text-danger' if inputs.trend_individual == 'present' else 'text-success' }}">{{ res.trend_texts.individual }}</div>{% endif %}
+      {% if inputs.trend_individual == 'present' %}<div class="small text-danger">Indiquer le numéro de la fiche d'action.</div>{% endif %}
+    </div>
+    <div class="col-lg-6">
+      <div class="fw-semibold mb-1">b) Distribution des moyennes</div>
+      {{ charts.means }}
+      {% set tm = res.trends.means %}
+      {% if tm %}<div class="small mt-2">Pente {{ n(tm.slope) }} · p = {{ '%.3f'|format(tm.p_value) if tm.p_value is not none else '—' }} · {{ 'tendance possible' if tm.significant else 'aucune tendance détectée' }}
+        <span class="text-muted">(indicatif : la décision reste la vôtre)</span></div>{% endif %}
+      <select class="form-select form-select-sm mt-2" name="trend_means" {{ 'disabled' if ro }}>
+        <option value="">— Votre décision —</option>
+        <option value="none" {{ 'selected' if inputs.trend_means == 'none' }}>Pas de tendance significative</option>
+        <option value="present" {{ 'selected' if inputs.trend_means == 'present' }}>Présence de tendance significative (B.2.1.b)</option>
+      </select>
+      {% if res.trend_texts.means %}<div class="small mt-1 {{ 'text-danger' if inputs.trend_means == 'present' else 'text-success' }}">{{ res.trend_texts.means }}</div>{% endif %}
+      {% if inputs.trend_means == 'present' %}<div class="small text-danger">Indiquer le numéro de la fiche d'action.</div>{% endif %}
+    </div>
+  </div>
+  <hr>
+  <h6 class="fw-bold">I.4 c) Test de Cochran (ISO 5725-2)</h6>
+  {% set co = res.cochran %}
+  {% if co and co.available %}
+    <div class="row g-3 align-items-center">
+      <div class="col-md-8"><table class="table table-sm w-auto mb-0">
+        <tr><td>Somme des Si² / Si² max</td><td class="text-end">{{ n(co.variances|sum) }} / {{ n(co.variances|max) }}</td></tr>
+        <tr><td>C = Si² max / Σ Si²</td><td class="text-end">{{ n(co.C) }}</td></tr>
+        <tr><td>G critique 1 % / 5 % (g = {{ co.g }}, m = {{ co.m }})</td><td class="text-end">{{ n(co.g1) }} / {{ n(co.g5) }}</td></tr>
+        <tr><td><strong>Décision</strong></td><td class="text-end">{% if co.decision == 'Si² correcte' %}<span class="badge bg-success">Si² correcte</span>{% elif co.decision == 'Si² isolée' %}<span class="badge bg-warning text-dark">Si² isolée</span>{% else %}<span class="badge bg-danger">Si² aberrante</span>{% endif %}</td></tr>
+      </table></div>
+      <div class="col-md-4">
+        {% if co.to_remove %}<div class="alert alert-danger py-2 mb-0"><strong>Échantillon à éliminer : {{ co.to_remove }}</strong><br><span class="small">Cochez « Exclure » sur sa ligne puis recalculez.</span></div>
+        {% else %}<div class="alert alert-success py-2 mb-0">Pas de valeur aberrante détectée.</div>{% endif %}
+      </div>
+    </div>
+    <div class="small text-muted mt-1">Le test porte sur tous les échantillons saisis, y compris ceux que vous excluez.{% if res.excluded_labels %} Exclus : {{ res.excluded_labels|join(', ') }}.{% endif %}</div>
+  {% elif co %}<div class="alert alert-warning py-2 mb-0">{{ co.text }}</div>{% endif %}
+</div></div>
+
+<!-- ═══ Résultats homogénéité ═══ -->
+<div class="card shadow-sm mb-3 border-primary"><div class="card-body">
+  <h5 class="fw-bold">I.3 / I.5 — Résultats de l'homogénéité</h5>
+  {% set h = res.hom %}
+  <div class="row g-3">
+    <div class="col-lg-6"><table class="table table-sm mb-0">
+      <tr><td>Échantillons g / prises d'essai m</td><td class="text-end">{{ h.g }} / {{ h.m }}</td></tr>
+      <tr><td>Moyenne générale x̿</td><td class="text-end">{{ n(h.xbar2) }}</td></tr>
+      <tr><td>Sx̄² (variance des moyennes)</td><td class="text-end">{{ n(h.sx2) }}</td></tr>
+      <tr><td>Sw² (variance intra-échantillon)</td><td class="text-end">{{ n(h.sw2) }}</td></tr>
+      <tr><td>Ss,w²</td><td class="text-end">{{ n(h.ss_w2) }}</td></tr>
+      <tr><td>Ss²</td><td class="text-end">{{ n(h.ss2) }}</td></tr>
+      <tr><td><strong>Ss</strong> (écart-type inter-échantillons)</td><td class="text-end"><strong>{{ n(h.ss) }}</strong></td></tr>
+      <tr><td><strong>Sr</strong> (= Sw)</td><td class="text-end"><strong>{{ n(h.sr) }}</strong></td></tr>
+      <tr><td>σpt choisi</td><td class="text-end">{{ n(h.sigma_pt) }}</td></tr>
+    </table></div>
+    <div class="col-lg-6">
+      {% if h.sigma_pt %}
+      <table class="table table-sm mb-2">
+        <tr><td>B.1.1 — Sr / σpt</td><td class="text-end">{{ n(h.ratio) }} {{ badge(h.ratio_ok, '< 0,5', '≥ 0,5') }}</td></tr>
+        <tr><td>σallow² = (0,3 σpt)²</td><td class="text-end">{{ n(h.sigma_allow2) }}</td></tr>
+        <tr><td>F1 / F2</td><td class="text-end">{{ '%.3f'|format(h.f1) }} / {{ '%.3f'|format(h.f2) }}</td></tr>
+        <tr><td>c = F1·σallow² + F2·Sw²  (√c)</td><td class="text-end">{{ n(h.c) }} ({{ '%.6g'|format(h.c ** 0.5) }})</td></tr>
+        <tr><td>B.2.3 — Ss &lt; √c</td><td class="text-end">{{ badge(h.homogeneous, 'Homogènes', 'Non homogènes') }}</td></tr>
+        {% if h.tolerance is not none %}<tr><td>Critère de tolérance σpt/√(σpt²+Ss²) (doit être entre 0,96 et 1)</td><td class="text-end">{{ '%.4f'|format(h.tolerance) }} {{ badge(h.tolerance_ok, 'Vérifié', 'Non vérifié') }}</td></tr>{% endif %}
+      </table>
+      <div class="alert {{ 'alert-success' if h.outcome == 'homogeneous' else ('alert-warning' if h.outcome == 'sigma_prime' else 'alert-danger') }} mb-0">{{ h.final_text }}</div>
+      {% else %}<div class="alert alert-warning mb-0">Renseignez le σpt pour obtenir les décisions.</div>{% endif %}
+    </div>
+  </div>
+</div></div>
+
+<!-- ═══ II — Stabilité ═══ -->
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <h5 class="fw-bold">II) Stabilité des échantillons (ISO 13528:2022, annexe B, pages 53-56)</h5>
+  <p class="text-muted small">Pour chaque essai de stabilité : 2 à 4 échantillons, mêmes prises d'essai que ci-dessus. La moyenne « avant » est la moyenne des résultats d'homogénéité retenus.</p>
+
+  <h6 class="fw-bold mt-3">II.1 — Stabilité à la fin de l'essai d'aptitude</h6>
+  {{ grid('stab', inputs.stab_end.rows, stab_g, max_m, ro) }}
+  {{ stab_block(res.stab_end) }}
+
+  <h6 class="fw-bold mt-4">II.2 — Effet du transport</h6>
+  <div class="row g-2 mb-2"><div class="col-md-6">
+    <select class="form-select form-select-sm" name="transport_sensitive" {{ 'disabled' if ro }}>
+      <option value="">— L'entité est-elle sensible au transport ? —</option>
+      <option value="no" {{ 'selected' if inputs.transport.sensitive is sameas false }}>Non sensible au transport et à ses conditions</option>
+      <option value="yes" {{ 'selected' if inputs.transport.sensitive is sameas true }}>Sensible au transport et à ses conditions</option>
+    </select></div>
+    <div class="col-md-6"><input class="form-control form-control-sm" name="transport_desc" placeholder="Comment les conditions de transport sont simulées" value="{{ inputs.meta.transport_desc }}" {{ 'disabled' if ro }}></div></div>
+  {% if inputs.transport.sensitive %}{{ grid('trn', inputs.transport.rows, stab_g, max_m, ro) }}{{ stab_block(res.transport) }}{% endif %}
+
+  <h6 class="fw-bold mt-4">II.3 — Effet du stockage jusqu'à la fin de l'essai d'aptitude</h6>
+  <select class="form-select form-select-sm mb-2" name="storage_risk" style="max-width:520px" {{ 'disabled' if ro }}>
+    <option value="">— L'entité risque-t-elle d'être instable ? —</option>
+    <option value="no" {{ 'selected' if inputs.storage.at_risk is sameas false }}>Ne risque pas d'être instable jusqu'à la fin de l'essai</option>
+    <option value="yes" {{ 'selected' if inputs.storage.at_risk is sameas true }}>Risque d'être instable jusqu'à la fin de l'essai</option>
+  </select>
+  {% if inputs.storage.at_risk %}
+  <div class="row g-3">
+    <div class="col-xl-6"><div class="fw-semibold">Essai de stabilité 1</div>{{ grid('sto1', inputs.storage.rows1, stab_g, max_m, ro) }}{{ stab_block(res.storage1) }}</div>
+    <div class="col-xl-6"><div class="fw-semibold">Essai de stabilité 2</div>{{ grid('sto2', inputs.storage.rows2, stab_g, max_m, ro) }}{{ stab_block(res.storage2) }}</div>
+  </div>
+  {% if charts.storage %}<div class="fw-semibold mt-2">Tendance des moyennes</div>{{ charts.storage }}{% endif %}
+  <select class="form-select form-select-sm mt-2" name="storage_trend" style="max-width:420px" {{ 'disabled' if ro }}>
+    <option value="">— Votre décision sur la tendance —</option>
+    <option value="none" {{ 'selected' if inputs.storage.trend == 'none' }}>Pas de tendance significative</option>
+    <option value="present" {{ 'selected' if inputs.storage.trend == 'present' }}>Présence de tendance significative</option>
+  </select>
+  {% endif %}
+</div></div>
+
+<!-- ═══ III — Récapitulatif ═══ -->
+<div class="card shadow-sm mb-3 border-success"><div class="card-body">
+  <h5 class="fw-bold">III) Récapitulatif et conclusion</h5>
+  {% set s = res.stability %}
+  <table class="table table-sm">
+    <tr><td style="width:46%">Homogénéité</td><td>{{ res.hom.final_text if res.hom.final_text else '—' }}</td></tr>
+    <tr><td>B.4.1.3 — Différence entre répétitions (stabilité)</td><td>{{ s.ratio_text if s else '—' }}</td></tr>
+    <tr><td>B.4.1.2 — Stabilité pendant l'essai (stockage)</td><td>{% if s and s.storage_stable is not none %}{{ badge(s.storage_stable, 'Stables', 'Non stables') }}{% else %}—{% endif %}</td></tr>
+    <tr><td>B.4.2.3 — Stabilité avant / après la campagne</td><td>{% if s and s.end_stable is not none %}{{ badge(s.end_stable, 'Stables', 'Non stables') }}{% else %}—{% endif %}</td></tr>
+    <tr><td>B.6 — Stabilité au transport</td><td>{% if s and s.transport_stable is not none %}{{ badge(s.transport_stable, 'Stables', 'Non stables') }}{% else %}—{% endif %}</td></tr>
+    <tr><td>Décision concernant la stabilité</td><td>{{ s.text if s else '—' }}</td></tr>
+  </table>
+  {% if res.conclusion %}
+  <div class="alert {{ 'alert-warning' if res.conclusion.provisional or res.conclusion.use_z_prime or res.conclusion.use_sigma_prime else 'alert-success' }} fs-6 mb-2">
+    <strong>Décision concernant les essais d'homogénéité et de stabilité :</strong><br>{{ res.conclusion.text }}
+    {% if res.conclusion.provisional %}<div class="small mt-1">Conclusion provisoire : l'étude de stabilité II.1 est à compléter.</div>{% endif %}
+  </div>
+  {% endif %}
+</div></div>
+{% else %}
+<div class="alert alert-info">Saisissez au moins 2 échantillons (avec le même nombre de résultats) puis cliquez sur « Calculer et enregistrer » : les résultats, les graphiques et les décisions apparaîtront ici.</div>
+{% endif %}
+
+{% if not ro %}
+<div class="d-flex flex-wrap gap-2 mb-5">
+  <button type="submit" class="btn btn-primary" onclick="document.getElementById('study-action').value='save'"><i class="bi bi-calculator"></i> Calculer et enregistrer</button>
+  {% if can_validate %}<button type="submit" class="btn btn-success" onclick="document.getElementById('study-action').value='validate'; return confirm('Valider l\'étude ? Elle sera verrouillée et son résultat reporté sur l\'essai.');"><i class="bi bi-check2-circle"></i> Valider l'étude</button>{% endif %}
+</div>
+{% endif %}
+</form>
+{% endblock %}

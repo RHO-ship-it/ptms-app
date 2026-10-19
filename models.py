@@ -386,3 +386,27 @@ class SheetIdentification(db.Model):
     laboratory_id = db.Column(db.Integer, db.ForeignKey("laboratories.id"), nullable=False)
     data = db.Column(db.Text, nullable=True)   # JSON : {"ident": {...}, "cells": {"<trial_id>": {...}}}
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class HomogeneityStudy(db.Model):
+    """Étude d'homogénéité et de stabilité d'un essai (digitalisation de la fiche FTE 006).
+
+    Les données saisies et les résultats calculés sont conservés en JSON : la structure de la
+    fiche (20 échantillons x 6 prises d'essai, stabilité, transport, stockage) évolue avec la
+    version du formulaire sans modifier la base."""
+    __tablename__ = "homogeneity_studies"
+    __table_args__ = (db.UniqueConstraint("trial_id", "kind", name="uq_homogeneity_study_trial_kind"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    trial_id = db.Column(db.Integer, db.ForeignKey("trials.id"), nullable=False)
+    kind = db.Column(db.String(20), nullable=False, default="quantitative")  # quantitative (autres types : à venir)
+    inputs = db.Column(db.Text, nullable=True)       # JSON : tout ce que l'opérateur a saisi
+    result = db.Column(db.Text, nullable=True)       # JSON : résultats calculés (figés à la validation)
+    status = db.Column(db.String(20), nullable=False, default="draft")  # draft, validated
+    conclusion = db.Column(db.String(300), nullable=True)
+    updated_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow)
+    validated_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    validated_at = db.Column(db.DateTime, nullable=True)
+
+    trial = db.relationship("Trial", backref=db.backref("homogeneity_studies", cascade="all, delete-orphan"))

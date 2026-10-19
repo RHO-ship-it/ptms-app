@@ -9,6 +9,13 @@
     ({{ trial.sigma_pt_method_label() }})
 </p>
 
+{% if trial.trial_type == 'quantitative' %}
+<div class="alert alert-primary d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div><strong>Étude complète FTE 006</strong> — homogénéité (Ss, test de Cochran, critère B.2.3), stabilité, transport et stockage, avec conclusion Z / Z′ / σ′pt.</div>
+    <a class="btn btn-primary btn-sm" href="{{ url_for('homogeneity.study', trial_id=trial.id) }}"><i class="bi bi-clipboard2-data"></i> Ouvrir l'étude</a>
+</div>
+{% endif %}
+
 {% if not trial.target_sd %}
 <div class="alert alert-warning">
     Aucun σpt (écart-type pour l'évaluation d'aptitude) n'est défini pour cet essai. Renseignez-le sur la fiche
