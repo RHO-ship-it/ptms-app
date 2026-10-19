@@ -129,6 +129,7 @@ class Campaign(db.Model):
     start_date = db.Column(db.Date)
     end_date = db.Column(db.Date)
     report_published = db.Column(db.Boolean, default=False)
+    sheet_config = db.Column(db.Text, nullable=True)  # JSON : structure de la feuille de saisie (voir blueprints/sheets.py)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -165,6 +166,8 @@ class Trial(db.Model):
     target_sd = db.Column(db.Float, nullable=True)       # écart-type pour évaluation (sigma) — essais quantitatifs
     expected_qualitative_result = db.Column(db.String(150), nullable=True)  # résultat attendu — essais qualitatifs/solidité
     due_date = db.Column(db.Date, nullable=True)
+    sheet_key = db.Column(db.String(40), nullable=True)   # feuille de saisie (onglet) à laquelle appartient cette ligne
+    scale = db.Column(db.Text, nullable=True)             # liste de choix propre à cette ligne (valeurs séparées par des virgules)
 
     # --- Traçabilité de sigma_pt (ISO 13528 §6-7 / cahier des charges §8) ---
     sigma_pt_method = db.Column(db.String(20), nullable=False, default="fixe")
@@ -270,6 +273,7 @@ class Submission(db.Model):
     value = db.Column(db.Float, nullable=True)                 # 1er résultat / réplicat 1 — essais quantitatifs
     replicate_2 = db.Column(db.Float, nullable=True)           # réplicat 2 (répétabilité) — essais quantitatifs
     qualitative_result = db.Column(db.String(150), nullable=True)  # résultat/grade — essais qualitatifs & solidité
+    extra_data = db.Column(db.Text, nullable=True)     # JSON : cellules brutes de la feuille de saisie
     solidite_data = db.Column(db.Text, nullable=True)  # JSON des 9 paramètres de solidité des couleurs (voir utils.SOLIDITE_PARAMS)
     uncertainty = db.Column(db.Float, nullable=True)           # incertitude élargie U(x) déclarée par le labo
 
@@ -370,3 +374,15 @@ class PortalDocument(db.Model):
     uploaded_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
     year = db.Column(db.Integer, nullable=True)            # année du document (catalogue, registration, instruction)
+
+
+class SheetIdentification(db.Model):
+    """Feuille de saisie d'un laboratoire pour une campagne : identification + cellules brutes (brouillon)."""
+    __tablename__ = "sheet_identifications"
+    __table_args__ = (db.UniqueConstraint("campaign_id", "laboratory_id", name="uq_sheet_campaign_lab"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey("campaigns.id"), nullable=False)
+    laboratory_id = db.Column(db.Integer, db.ForeignKey("laboratories.id"), nullable=False)
+    data = db.Column(db.Text, nullable=True)   # JSON : {"ident": {...}, "cells": {"<trial_id>": {...}}}
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

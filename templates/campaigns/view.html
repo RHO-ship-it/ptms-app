@@ -142,9 +142,14 @@
                 <i class="bi bi-flask text-primary" style="font-size:17px;"></i>
                 <span class="ptms-card-title">Essais de cette campagne</span>
                 {% if current_user.role in ['admin','chef_technique'] %}
+                <span class="d-flex gap-2">
+                <a href="{{ url_for('sheets.builder', campaign_id=campaign.id) }}" class="ptms-btn ptms-btn-sm" style="border:1px solid #CBD5E1;">
+                    <i class="bi bi-table"></i> Feuille de saisie
+                </a>
                 <a href="{{ url_for('trials.new_trial', campaign_id=campaign.id) }}" class="ptms-btn ptms-btn-primary ptms-btn-sm">
                     <i class="bi bi-plus-lg"></i> Ajouter un essai
                 </a>
+                </span>
                 {% endif %}
             </div>
             <div class="ptms-card-body">

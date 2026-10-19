@@ -59,6 +59,14 @@
     </div>
   </div>
 
+  {% if selected_campaign %}
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 p-3 mb-4 rounded-3" style="background:#EFF6FF;border:1px solid #BFDBFE;">
+    <div><div class="fw-bold"><i class="bi bi-table text-primary me-2"></i>Feuille de saisie — {{ selected_campaign.reference }}</div>
+      <div class="small text-muted">Saisissez tous vos résultats dans une seule feuille, comme dans le fichier Excel.</div></div>
+    <a class="btn btn-primary" href="{{ url_for('sheets.entry', campaign_id=selected_campaign.id) }}"><i class="bi bi-pencil-square me-1"></i>Ouvrir la feuille de saisie</a>
+  </div>
+  {% endif %}
+
   <!-- ══ KPIs RAPIDES ════════════════════════════════════════════════════ -->
   {% set total = forms | length %}
   {% set soumis = forms | selectattr('submission') | list | length %}
