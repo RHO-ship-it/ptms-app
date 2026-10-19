@@ -20,11 +20,17 @@ def create_app(config_class=Config):
 
     with app.app_context():
         db.create_all()
-        # Base déjà existante : ajoute la colonne « year » si elle manque.
+        # Base déjà existante : ajoute les colonnes récentes si elles manquent.
         from sqlalchemy import inspect as _sa_inspect, text as _sa_text
-        if "year" not in {col["name"] for col in _sa_inspect(db.engine).get_columns("portal_documents")}:
-            db.session.execute(_sa_text("ALTER TABLE portal_documents ADD COLUMN year INTEGER"))
-            db.session.commit()
+        _insp = _sa_inspect(db.engine)
+        for _table, _col, _ddl in (("portal_documents", "year", "INTEGER"),
+                                   ("campaigns", "sheet_config", "TEXT"),
+                                   ("trials", "sheet_key", "VARCHAR(40)"),
+                                   ("trials", "scale", "TEXT"),
+                                   ("submissions", "extra_data", "TEXT")):
+            if _col not in {c["name"] for c in _insp.get_columns(_table)}:
+                db.session.execute(_sa_text(f"ALTER TABLE {_table} ADD COLUMN {_col} {_ddl}"))
+        db.session.commit()
 
     from models import User
 
@@ -62,6 +68,8 @@ def create_app(config_class=Config):
     app.register_blueprint(homogeneity_bp, url_prefix="/homogeneity")
     app.register_blueprint(commercial_bp, url_prefix="/commercial")
     app.register_blueprint(catalogue_bp, url_prefix="/catalogue")
+    from blueprints.sheets import sheets_bp
+    app.register_blueprint(sheets_bp, url_prefix="/sheets")
 
     # Recharge les PDF déposés dans documents/ (la base SQLite de Render est remise à zéro à chaque déploiement).
     from blueprints.catalogue import seed_documents
