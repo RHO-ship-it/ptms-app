@@ -1,3 +1,5 @@
+import json
+import re
 import secrets
 from datetime import datetime
 
@@ -5,7 +7,9 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash,
 from flask_login import login_required, current_user
 
 from extensions import db
-from models import Campaign, Trial, Laboratory, CampaignLaboratory, ParticipantForm, User
+from models import Campaign, Trial, Laboratory, CampaignLaboratory, ParticipantForm, User, WizardDraft
+from blueprints.sheets import (make_sheet, PRESETS, SENSORY_NAME, SENSORY_ROWS, DEFAULT_IDENT, KINDS,
+                               _slug, _pesticide_list)
 from utils import log_action, notify_role
 from blueprints.auth import roles_required
 
@@ -15,15 +19,48 @@ SESSION_KEY = "wizard_data"
 
 
 def _get_data():
-    return session.get(SESSION_KEY, {"trials": [], "laboratory_ids": []})
+    row = WizardDraft.query.filter_by(user_id=current_user.id).first()
+    if row and row.data:
+        try:
+            data = json.loads(row.data)
+            data.setdefault("trials", [])
+            data.setdefault("laboratory_ids", [])
+            return data
+        except ValueError:
+            pass
+    return {"trials": [], "laboratory_ids": []}
 
 
 def _save_data(data):
-    session[SESSION_KEY] = data
+    row = WizardDraft.query.filter_by(user_id=current_user.id).first()
+    if row is None:
+        row = WizardDraft(user_id=current_user.id)
+        db.session.add(row)
+    row.data = json.dumps(data, ensure_ascii=False)
+    db.session.commit()
 
 
 def _reset():
+    WizardDraft.query.filter_by(user_id=current_user.id).delete()
+    db.session.commit()
     session.pop(SESSION_KEY, None)
+
+
+def _rebuild_trials(data):
+    """Liste à plat des essais (utilisée par les étapes 3 à 5) déduite des feuilles."""
+    flat = []
+    for s in data.get("sheets", []):
+        for r in s["rows"]:
+            flat.append({**r, "trial_type": r.get("trial_type") or s["kind"], "sheet_key": s["key"], "sheet_title": s["title"]})
+    data["trials"] = flat
+
+
+def _float_or_none(text):
+    text = (text or "").strip().replace(",", ".")
+    if not text:
+        return ""
+    float(text)          # lève ValueError si invalide
+    return text
 
 
 @wizard_bp.route("/start")
@@ -71,41 +108,108 @@ def step1():
 @login_required
 @roles_required("admin", "chef_technique")
 def step2():
+    """Essais de la campagne = feuilles de saisie (onglets vus par les laboratoires) et leurs lignes (paramètres)."""
     data = _get_data()
     if "reference" not in data:
         flash("Veuillez d'abord renseigner les informations générales.", "warning")
         return redirect(url_for("wizard.step1"))
+    data.setdefault("sheets", [])
 
     if request.method == "POST":
-        if request.form.get("action") == "add_trial":
-            trial = {
-                "name": request.form.get("trial_name", "").strip(),
-                "trial_type": request.form.get("trial_type", "quantitative"),
-                "parameter": request.form.get("parameter", "").strip(),
-                "unit": request.form.get("unit", "").strip(),
-                "method": request.form.get("method", "").strip(),
-                "sample_reference": request.form.get("sample_reference", "").strip(),
-                "target_value": request.form.get("target_value", ""),
-                "target_sd": request.form.get("target_sd", ""),
-                "expected_qualitative_result": request.form.get("expected_qualitative_result", "").strip(),
-            }
-            if trial["name"]:
-                data.setdefault("trials", []).append(trial)
+        f = request.form
+        action = f.get("action")
+        try:
+            if action == "add_sheet":
+                _add_sheet(data, f)
+            elif action == "remove_sheet":
+                idx = f.get("sheet", type=int)
+                if idx is not None and 0 <= idx < len(data["sheets"]):
+                    data["sheets"].pop(idx)
+            elif action in ("add_row", "bulk_rows", "remove_row"):
+                _edit_rows(data, f, action)
+            elif action == "next":
+                if not any(s["rows"] for s in data["sheets"]):
+                    flash("Ajoutez au moins une feuille avec une ligne.", "warning")
+                    return redirect(url_for("wizard.step2"))
+                _rebuild_trials(data)
                 _save_data(data)
+                return redirect(url_for("wizard.step3"))
+        except ValueError as exc:
+            flash(str(exc), "danger")
             return redirect(url_for("wizard.step2"))
-        elif request.form.get("action") == "remove_trial":
-            idx = int(request.form.get("index"))
-            if 0 <= idx < len(data.get("trials", [])):
-                data["trials"].pop(idx)
-                _save_data(data)
-            return redirect(url_for("wizard.step2"))
-        elif request.form.get("action") == "next":
-            if not data.get("trials"):
-                flash("Veuillez ajouter au moins un essai.", "warning")
-                return redirect(url_for("wizard.step2"))
-            return redirect(url_for("wizard.step3"))
+        _rebuild_trials(data)
+        _save_data(data)
+        return redirect(url_for("wizard.step2", _anchor=("sheet-%s" % f.get("sheet")) if f.get("sheet") not in (None, "") else None))
 
-    return render_template("wizard/step2.html", data=data)
+    previews = []
+    for s in data["sheets"]:
+        sheet = make_sheet(s["preset"], s["title"], s["key"])
+        previews.append([c["label"] for c in sheet["cols"]] if sheet["kind"] != "sensory" else
+                        ["Panel + grille des dégustateurs", "Médianes (auto)", "Classification", "Type de fruité", "Défaut dominant"])
+    return render_template("wizard/step2.html", data=data, presets=PRESETS, kinds=KINDS, previews=previews,
+                           pesticides=_pesticide_list())
+
+
+def _add_sheet(data, f):
+    preset = f.get("preset")
+    if preset not in PRESETS:
+        raise ValueError("Choisissez le modèle de feuille.")
+    label, kind = PRESETS[preset][0], PRESETS[preset][1]
+    title = (f.get("title") or "").strip() or label.split(":")[0]
+    name = (f.get("trial_name") or "").strip() or title
+    sample = (f.get("sample_reference") or "").strip()
+    key, n = _slug(title, "feuille"), 2
+    while any(s["key"] == key for s in data["sheets"]):
+        key, n = f"{_slug(title, 'feuille')}_{n}", n + 1
+    sheet = {"key": key, "title": title, "preset": preset, "kind": kind, "name": name, "sample": sample, "rows": []}
+    if kind == "sensory":      # les 3 résultats transmis pour évaluation sont créés d'office
+        for pname, ptype in SENSORY_ROWS:
+            sheet["rows"].append({"name": name or SENSORY_NAME, "trial_type": ptype, "parameter": pname, "unit": "",
+                                  "method": "COI", "sample_reference": sample, "target_value": "", "target_sd": "",
+                                  "expected_qualitative_result": (f.get("expected") or "").strip() if ptype == "qualitative" else ""})
+    data["sheets"].append(sheet)
+
+
+def _edit_rows(data, f, action):
+    idx = f.get("sheet", type=int)
+    if idx is None or not 0 <= idx < len(data["sheets"]):
+        raise ValueError("Feuille inconnue.")
+    sheet = data["sheets"][idx]
+    if action == "remove_row":
+        ridx = f.get("row", type=int)
+        if ridx is not None and 0 <= ridx < len(sheet["rows"]):
+            sheet["rows"].pop(ridx)
+        return
+    if sheet["kind"] == "sensory":
+        raise ValueError("Les lignes d'une feuille sensorielle sont fixes (fruité, défaut, catégorie).")
+    unit, method = (f.get("unit") or "").strip(), (f.get("method") or "").strip()
+    sample = (f.get("sample_reference") or "").strip() or sheet.get("sample", "")
+    name = (f.get("trial_name") or "").strip() or sheet.get("name") or sheet["title"]
+    is_quant = sheet["kind"] == "quantitative"
+
+    def row(parameter, target="", sd="", expected=""):
+        return {"name": name, "trial_type": sheet["kind"], "parameter": parameter, "unit": unit, "method": method,
+                "sample_reference": sample, "target_value": _float_or_none(target) if is_quant else "",
+                "target_sd": _float_or_none(sd) if is_quant else "",
+                "expected_qualitative_result": "" if is_quant else (expected or "").strip()}
+
+    if action == "add_row":
+        parameter = (f.get("parameter") or "").strip()
+        if not parameter:
+            raise ValueError("Indiquez le paramètre.")
+        sheet["rows"].append(row(parameter, f.get("target_value"), f.get("target_sd"), f.get("expected")))
+    else:   # bulk_rows : « paramètre [; valeur assignée / attendu [; sigma]] », une ligne par paramètre (collage Excel possible)
+        existing = {r["parameter"].lower() for r in sheet["rows"]}
+        added = 0
+        for line in (f.get("lines") or "").splitlines():
+            parts = [p.strip() for p in re.split(r"[;\t]", line)]
+            if not parts or not parts[0] or parts[0].lower() in existing:
+                continue
+            existing.add(parts[0].lower())
+            sheet["rows"].append(row(parts[0], parts[1] if len(parts) > 1 else "", parts[2] if len(parts) > 2 else "",
+                                     parts[1] if len(parts) > 1 else ""))
+            added += 1
+        flash(f"{added} ligne(s) ajoutée(s) à « {sheet['title']} ».", "success" if added else "info")
 
 
 @wizard_bp.route("/step3", methods=["GET", "POST"])
@@ -142,15 +246,14 @@ def step4():
         return redirect(url_for("wizard.step3"))
 
     labs = Laboratory.query.filter(Laboratory.id.in_(data["laboratory_ids"])).all()
-    forms_preview = []
-    for trial in data["trials"]:
-        for lab in labs:
-            forms_preview.append({"trial": trial["name"], "lab": lab.code})
+    sheets_preview = [{"title": s["title"], "kind": KINDS[s["kind"]], "name": s.get("name", ""), "sample": s.get("sample", ""),
+                       "rows": len(s["rows"]), "forms": len(s["rows"]) * len(labs)} for s in data.get("sheets", [])]
+    total_forms = len(data["trials"]) * len(labs)
 
     if request.method == "POST":
         return redirect(url_for("wizard.step5"))
 
-    return render_template("wizard/step4.html", data=data, labs=labs, forms_preview=forms_preview)
+    return render_template("wizard/step4.html", data=data, labs=labs, sheets_preview=sheets_preview, total_forms=total_forms)
 
 
 @wizard_bp.route("/step5", methods=["GET", "POST"])
@@ -189,6 +292,9 @@ def step5():
                 end_date=end_date,
                 created_by=current_user.id,
             )
+            # Feuille de saisie vue par les laboratoires : une feuille par modèle choisi à l'étape 2
+            campaign.sheet_config = json.dumps({"ident": list(DEFAULT_IDENT), "sheets": [
+                make_sheet(s["preset"], s["title"], s["key"]) for s in data.get("sheets", [])]}, ensure_ascii=False)
             db.session.add(campaign)
             db.session.flush()
 
@@ -211,6 +317,7 @@ def step5():
                     target_value=float(t["target_value"]) if t.get("target_value") else None,
                     target_sd=float(t["target_sd"]) if t.get("target_sd") else None,
                     expected_qualitative_result=t.get("expected_qualitative_result", "") or None,
+                    sheet_key=t.get("sheet_key"),
                     due_date=due_date,
                 )
                 db.session.add(trial)

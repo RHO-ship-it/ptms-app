@@ -3,19 +3,19 @@
 {% block content %}
 {% include "wizard/_progress.html" %}
 <h4 class="mb-3">Étape 4 / 5 — Aperçu de la génération des formulaires</h4>
-<p class="text-muted">Un formulaire sera automatiquement généré pour chaque combinaison Essai × Laboratoire.</p>
+<p class="text-muted">Chaque laboratoire recevra la feuille de saisie ci-dessous ; un formulaire est généré pour chaque ligne × laboratoire, et un colis par laboratoire.</p>
 
 <div class="card card-kpi p-3 mb-3">
     <div class="row mb-2">
         <div class="col-md-4"><strong>{{ data.trials|length }}</strong> essai(s)</div>
         <div class="col-md-4"><strong>{{ labs|length }}</strong> laboratoire(s)</div>
-        <div class="col-md-4"><strong>{{ forms_preview|length }}</strong> formulaire(s) à générer</div>
+        <div class="col-md-4"><strong>{{ total_forms }}</strong> formulaire(s) à générer</div>
     </div>
     <table class="table table-sm">
-        <thead><tr><th>Essai</th><th>Laboratoire</th></tr></thead>
+        <thead><tr><th>Feuille de saisie</th><th>Type</th><th>Essai / échantillon</th><th class="text-end">Lignes</th><th class="text-end">Formulaires</th></tr></thead>
         <tbody>
-        {% for f in forms_preview %}
-            <tr><td>{{ f.trial }}</td><td>{{ f.lab }}</td></tr>
+        {% for s in sheets_preview %}
+            <tr><td class="fw-semibold">{{ s.title }}</td><td>{{ s.kind }}</td><td>{{ s.name }}{% if s.sample %} · <code>{{ s.sample }}</code>{% endif %}</td><td class="text-end">{{ s.rows }}</td><td class="text-end">{{ s.forms }}</td></tr>
         {% endfor %}
         </tbody>
     </table>

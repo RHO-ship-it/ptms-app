@@ -2,90 +2,103 @@
 {% block title %}Wizard - Étape 2{% endblock %}
 {% block content %}
 {% include "wizard/_progress.html" %}
-<h4 class="mb-3">Étape 2 / 5 — Essais de la campagne</h4>
+<h4 class="mb-1">Étape 2 / 5 — Essais de la campagne</h4>
+<p class="text-muted mb-3">Chaque <b>feuille</b> devient un <b>onglet de la feuille de saisie</b> des laboratoires (comme les fichiers « submission sheet » Excel). Ses <b>lignes</b> sont les paramètres à mesurer. Les essais sont regroupés dans le <b>colis</b> par nom d'essai et code échantillon.</p>
 
 <div class="card card-kpi p-4 mb-3">
-    <h6>Ajouter un essai</h6>
-    <form method="POST" class="row g-2 align-items-end">
-        <input type="hidden" name="action" value="add_trial">
-        <div class="col-md-3">
-            <label class="form-label small">Nom de l'essai</label>
-            <input type="text" class="form-control" name="trial_name" required>
-        </div>
-        <div class="col-md-2">
-            <label class="form-label small">Type d'essai</label>
-            <select class="form-select" name="trial_type">
-                <option value="quantitative">Quantitatif</option>
-                <option value="qualitative">Qualitatif</option>
-                <option value="solidite">Solidité</option>
-            </select>
-        </div>
-        <div class="col-md-2">
-            <label class="form-label small">Paramètre</label>
-            <input type="text" class="form-control" name="parameter">
-        </div>
-        <div class="col-md-1">
-            <label class="form-label small">Unité</label>
-            <input type="text" class="form-control" name="unit">
-        </div>
-        <div class="col-md-2">
-            <label class="form-label small">Méthode</label>
-            <input type="text" class="form-control" name="method">
-        </div>
-        <div class="col-md-2">
-            <label class="form-label small">Réf. échantillon</label>
-            <input type="text" class="form-control" name="sample_reference">
-        </div>
-        <div class="col-md-2">
-            <label class="form-label small">Val. assignée (X)</label>
-            <input type="number" step="any" class="form-control" name="target_value">
-            <span class="form-text">Essais quantitatifs</span>
-        </div>
-        <div class="col-md-1">
-            <label class="form-label small">Sigma</label>
-            <input type="number" step="any" class="form-control" name="target_sd">
-        </div>
-        <div class="col-md-2">
-            <label class="form-label small">Résultat attendu</label>
-            <input type="text" class="form-control" name="expected_qualitative_result" placeholder="ex: Conforme">
-            <span class="form-text">Essais qualitatifs / solidité</span>
-        </div>
-        <div class="col-md-1">
-            <button type="submit" class="btn btn-primary w-100"><i class="bi bi-plus-lg"></i></button>
-        </div>
-    </form>
+  <h6>Ajouter une feuille</h6>
+  <form method="POST" class="row g-2 align-items-end">
+    <input type="hidden" name="action" value="add_sheet">
+    <div class="col-md-4"><label class="form-label small">Modèle de feuille (ce que verra le participant)</label>
+      <select class="form-select" name="preset" id="presetSel" required>
+        {% for k, p in presets.items() %}<option value="{{ k }}" data-label="{{ p[0].split(':')[0] }}">{{ p[0] }}</option>{% endfor %}
+      </select></div>
+    <div class="col-md-3"><label class="form-label small">Titre de l'onglet</label>
+      <input type="text" class="form-control" name="title" id="titleIn" placeholder="ex. Pesticides"></div>
+    <div class="col-md-3"><label class="form-label small">Nom de l'essai</label>
+      <input type="text" class="form-control" name="trial_name" placeholder="ex. Sensory analysis of virgin olive oils"></div>
+    <div class="col-md-2"><label class="form-label small">Code échantillon</label>
+      <input type="text" class="form-control" name="sample_reference" placeholder="#A260001"></div>
+    <div class="col-md-3" id="expectedBox" style="display:none;"><label class="form-label small">Catégorie attendue</label>
+      <input type="text" class="form-control" name="expected" placeholder="ex. Extra Virgin"></div>
+    <div class="col-md-2"><button type="submit" class="btn btn-primary w-100"><i class="bi bi-plus-lg me-1"></i>Ajouter la feuille</button></div>
+  </form>
 </div>
 
-<div class="card card-kpi p-3 mb-3">
-    <table class="table table-sm">
-        <thead><tr><th>Nom</th><th>Type</th><th>Paramètre</th><th>Unité</th><th>Méthode</th><th>Val. assignée / Résultat attendu</th><th>Sigma</th><th></th></tr></thead>
-        <tbody>
-        {% for t in data.get('trials', []) %}
-            <tr>
-                <td>{{ t.name }}</td>
-                <td><span class="badge bg-secondary">{{ {'quantitative':'Quantitatif','qualitative':'Qualitatif','solidite':'Solidité'}.get(t.trial_type, t.trial_type) }}</span></td>
-                <td>{{ t.parameter }}</td><td>{{ t.unit }}</td>
-                <td>{{ t.method }}</td>
-                <td>{{ t.target_value if t.trial_type == 'quantitative' else t.expected_qualitative_result }}</td>
-                <td>{{ t.target_sd }}</td>
-                <td>
-                    <form method="POST">
-                        <input type="hidden" name="action" value="remove_trial">
-                        <input type="hidden" name="index" value="{{ loop.index0 }}">
-                        <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
-                    </form>
-                </td>
-            </tr>
-        {% else %}
-            <tr><td colspan="8" class="text-center text-muted">Aucun essai ajouté pour le moment.</td></tr>
-        {% endfor %}
-        </tbody>
-    </table>
+{% for s in data.sheets %}
+{% set si = loop.index0 %}
+<div class="card card-kpi p-3 mb-3" id="sheet-{{ si }}">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+    <div>
+      <span class="fw-bold fs-6"><i class="bi bi-file-earmark-spreadsheet text-success me-1"></i>{{ s.title }}</span>
+      <span class="badge bg-secondary ms-2">{{ kinds[s.kind] }}</span>
+      <div class="small text-muted">Essai : {{ s.name }}{% if s.sample %} · échantillon <code>{{ s.sample }}</code>{% endif %} · {{ s.rows|length }} ligne(s)</div>
+    </div>
+    <form method="POST" onsubmit="return confirm('Supprimer cette feuille et ses lignes ?');">
+      <input type="hidden" name="action" value="remove_sheet"><input type="hidden" name="sheet" value="{{ si }}">
+      <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form>
+  </div>
+  <div class="mb-2 small"><span class="text-muted">Colonnes vues par le laboratoire :</span>
+    {% for label in previews[si] %}<span class="badge bg-light text-dark border me-1">{{ label }}</span>{% endfor %}</div>
+
+  <div class="table-responsive" style="max-height:340px;overflow:auto;">
+  <table class="table table-sm align-middle mb-2">
+    <thead class="table-light" style="position:sticky;top:0;"><tr><th>#</th><th>Paramètre</th><th>Unité</th><th>Méthode</th><th>Éch.</th><th>{{ 'Val. assignée' if s.kind == 'quantitative' else 'Résultat attendu' }}</th>{% if s.kind == 'quantitative' %}<th>Sigma</th>{% endif %}<th></th></tr></thead>
+    <tbody>
+    {% for r in s.rows %}
+      <tr><td class="text-muted">{{ loop.index }}</td><td>{{ r.parameter }}</td><td>{{ r.unit }}</td><td>{{ r.method }}</td><td><code>{{ r.sample_reference }}</code></td>
+        <td>{{ r.target_value if s.kind == 'quantitative' else r.expected_qualitative_result }}</td>
+        {% if s.kind == 'quantitative' %}<td>{{ r.target_sd }}</td>{% endif %}
+        <td class="text-end">{% if s.kind != 'sensory' %}<form method="POST" class="d-inline"><input type="hidden" name="action" value="remove_row"><input type="hidden" name="sheet" value="{{ si }}"><input type="hidden" name="row" value="{{ loop.index0 }}"><button class="btn btn-sm btn-outline-danger py-0"><i class="bi bi-x"></i></button></form>{% endif %}</td></tr>
+    {% else %}
+      <tr><td colspan="8" class="text-center text-muted">Aucune ligne : ajoutez les paramètres ci-dessous.</td></tr>
+    {% endfor %}
+    </tbody></table></div>
+
+  {% if s.kind != 'sensory' %}
+  <form method="POST" class="row g-2 align-items-end border-top pt-2">
+    <input type="hidden" name="action" value="add_row"><input type="hidden" name="sheet" value="{{ si }}">
+    <div class="col-md-3"><label class="form-label small mb-0">Paramètre</label><input class="form-control form-control-sm" name="parameter" required></div>
+    <div class="col-md-1"><label class="form-label small mb-0">Unité</label><input class="form-control form-control-sm" name="unit"></div>
+    <div class="col-md-2"><label class="form-label small mb-0">Méthode</label><input class="form-control form-control-sm" name="method"></div>
+    <div class="col-md-2"><label class="form-label small mb-0">Éch.</label><input class="form-control form-control-sm" name="sample_reference" placeholder="{{ s.sample }}"></div>
+    {% if s.kind == 'quantitative' %}
+    <div class="col-md-1"><label class="form-label small mb-0">Val. (X)</label><input type="text" inputmode="decimal" class="form-control form-control-sm" name="target_value"></div>
+    <div class="col-md-1"><label class="form-label small mb-0">Sigma</label><input type="text" inputmode="decimal" class="form-control form-control-sm" name="target_sd"></div>
+    {% else %}
+    <div class="col-md-2"><label class="form-label small mb-0">Résultat attendu</label><input class="form-control form-control-sm" name="expected" placeholder="ex: 4"></div>
+    {% endif %}
+    <div class="col-md-1"><button class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg"></i></button></div>
+  </form>
+  <details class="mt-2"><summary class="small fw-semibold" style="cursor:pointer;"><i class="bi bi-list-ul me-1"></i>Ajouter plusieurs lignes d'un coup (collage depuis Excel possible)</summary>
+    <form method="POST" class="row g-2 mt-1">
+      <input type="hidden" name="action" value="bulk_rows"><input type="hidden" name="sheet" value="{{ si }}">
+      <div class="col-md-2"><label class="form-label small mb-0">Unité</label><input class="form-control form-control-sm" name="unit"></div>
+      <div class="col-md-3"><label class="form-label small mb-0">Méthode</label><input class="form-control form-control-sm" name="method"></div>
+      <div class="col-md-3"><label class="form-label small mb-0">Éch.</label><input class="form-control form-control-sm" name="sample_reference" placeholder="{{ s.sample }}"></div>
+      <div class="col-12"><textarea class="form-control form-control-sm" rows="5" name="lines" id="lines{{ si }}" placeholder="Un paramètre par ligne.&#10;Option : paramètre ; {{ 'valeur assignée ; sigma' if s.kind == 'quantitative' else 'résultat attendu' }}"></textarea></div>
+      <div class="col-12 d-flex gap-2">
+        {% if s.preset == 'pesticide' and pesticides %}<button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('lines{{ si }}').value = {{ pesticides|tojson|forceescape }}.join('\n');">Insérer la liste des {{ pesticides|length }} pesticides du modèle</button>{% endif %}
+        <button class="btn btn-sm btn-success"><i class="bi bi-plus-lg me-1"></i>Ajouter ces lignes</button></div>
+    </form></details>
+  {% else %}
+  <div class="small text-muted border-top pt-2"><i class="bi bi-info-circle me-1"></i>Les 3 résultats transmis (médiane du fruité, médiane du défaut dominant, catégorie) sont créés automatiquement ; la grille des dégustateurs se règle ensuite dans « Feuille de saisie ».</div>
+  {% endif %}
 </div>
+{% else %}
+<div class="card card-kpi p-4 mb-3 text-center text-muted">Aucune feuille pour le moment : choisissez un modèle ci-dessus.</div>
+{% endfor %}
 
 <form method="POST">
-    <input type="hidden" name="action" value="next">
-    <a href="{{ url_for('wizard.step1') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Précédent</a>
-    <button type="submit" class="btn btn-primary">Suivant <i class="bi bi-arrow-right"></i></button>
+  <input type="hidden" name="action" value="next">
+  <a href="{{ url_for('wizard.step1') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Précédent</a>
+  <button type="submit" class="btn btn-primary">Suivant <i class="bi bi-arrow-right"></i></button>
 </form>
+<script>
+(function () {
+  var sel = document.getElementById('presetSel'), t = document.getElementById('titleIn'), box = document.getElementById('expectedBox');
+  function sync() { var o = sel.options[sel.selectedIndex]; t.placeholder = o.dataset.label || ''; box.style.display = sel.value === 'sensory' ? '' : 'none'; }
+  sel.addEventListener('change', sync); sync();
+})();
+</script>
 {% endblock %}
