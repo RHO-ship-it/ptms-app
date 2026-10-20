@@ -13,6 +13,7 @@ from utils import compute_homogeneity, compute_stability, log_action
 from blueprints.auth import roles_required
 import homogeneity_calc as hc
 import homogeneity_ordinal as ho
+import homogeneity_solidity as hs
 
 homogeneity_bp = Blueprint("homogeneity", __name__, template_folder="../templates/homogeneity")
 
@@ -280,8 +281,9 @@ def study(trial_id):
     trial = Trial.query.get_or_404(trial_id)
     if trial.trial_type == "qualitative":
         return redirect(url_for("homogeneity.study_ordinal", trial_id=trial.id))
+    if trial.trial_type == "solidite":
+        return redirect(url_for("homogeneity.study_solidity", trial_id=trial.id))
     if trial.trial_type != "quantitative":
-        flash("L'étude FTE 006 des essais de solidité arrive dans une prochaine étape.", "info")
         return redirect(url_for("homogeneity.assess", trial_id=trial.id))
 
     record = HomogeneityStudy.query.filter_by(trial_id=trial.id, kind="quantitative").first()
@@ -473,3 +475,141 @@ def study_ordinal(trial_id):
     return render_template("homogeneity/study_ordinal.html", trial=trial, record=record, inputs=inputs, res=res,
                            readonly=bool(record and record.status == "validated"), can_validate=can_validate,
                            hom_g=ho.MAX_HOM_G, stab_g=ho.MAX_STAB_G, max_m=ho.MAX_M)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  ÉTUDE DES ESSAIS DE SOLIDITÉ (fiche FTE 006 v06, page 6/6) : 9 paramètres, 2 résultats par échantillon
+# ═════════════════════════════════════════════════════════════════════════════
+
+_SOL_BLOCKS = [("t1", "s1"), ("t2", "s2"), ("t3", "s3"), ("tf", "sf")]   # (clé d'essai, préfixe des champs)
+
+
+def _sol_grid(nrows):
+    return [[None] * hs.N_PARAMS for _ in range(nrows)]
+
+
+def _sol_pair(nrows):
+    return {"set1": _sol_grid(nrows), "set2": _sol_grid(nrows)}
+
+
+def _sol_param_names():
+    from utils import SOLIDITE_PARAMS
+    return [p["label"] for p in SOLIDITE_PARAMS]
+
+
+def _default_solidity_inputs(trial):
+    return {
+        "meta": {"campaign_ref": trial.campaign.reference if trial.campaign else "",
+                 "sample_ref": getattr(trial, "sample_reference", "") or "",
+                 "method": getattr(trial, "method", "") or trial.name or "",
+                 "hom_date": "", "end_round_date": "", "stab_date": "", "eliminated_note": "",
+                 "transport_desc": "", "pv_note": ""},
+        "basis": "median", "tolerance": None, "params": _sol_param_names(),
+        "hom": {"codes": [f"HO {i + 1:03d}" for i in range(hs.HOM_G)], **_sol_pair(hs.HOM_G)},
+        "stab_end": _sol_pair(hs.STAB_G),
+        "storage": {"active": None, "tests": {k: _sol_pair(hs.STAB_G) for k, _ in _SOL_BLOCKS}},
+        "transport": {"active": None, **_sol_pair(hs.STAB_G)},
+    }
+
+
+def _solidity_inputs_from_form(form, trial):
+    base = _default_solidity_inputs(trial)
+    f = form.get
+    pair = lambda a, b, n: {"set1": _read_grid(form, a, n, hs.N_PARAMS), "set2": _read_grid(form, b, n, hs.N_PARAMS)}
+    names = [(f(f"param_{j}") or base["params"][j]).strip()[:60] for j in range(hs.N_PARAMS)]
+    return {
+        "meta": {k: (f(k) or "").strip()[:300] for k in base["meta"]},
+        "basis": f("basis") if f("basis") in ("mode", "median") else "median",
+        "tolerance": _num(f("tolerance")), "params": names,
+        "hom": {"codes": [(f(f"hom_code_{i}") or f"HO {i + 1:03d}").strip()[:30] for i in range(hs.HOM_G)],
+                **pair("h1", "h2", hs.HOM_G)},
+        "stab_end": pair("e1", "e2", hs.STAB_G),
+        "storage": {"active": _flag(f("storage_active")),
+                    "tests": {k: pair(p + "a", p + "b", hs.STAB_G) for k, p in _SOL_BLOCKS}},
+        "transport": {"active": _flag(f("transport_active")), **pair("ta", "tb", hs.STAB_G)},
+    }
+
+
+def _sync_solidity_assessment(trial, res, user):
+    active = [a for a in res["params"] if a and a.get("hom")]
+    a = HomogeneityStabilityAssessment.query.filter_by(trial_id=trial.id).first()
+    if a is None:
+        a = HomogeneityStabilityAssessment(trial_id=trial.id)
+        db.session.add(a)
+    a.s_within = a.s_between = None
+    a.homogeneity_criterion = res["tolerance"]
+    a.homogeneity_conform = all(p["hom"]["all_ok"] for p in active)
+    a.stability_conform = all(v in (None, hs.T_STABLE) for p in active for v in p["stability"].values())
+    a.sigma_pt_used = None
+    a.assessed_by, a.assessed_at = user.id, datetime.utcnow()
+
+
+@homogeneity_bp.route("/trial/<int:trial_id>/study-solidity", methods=["GET", "POST"])
+@login_required
+@roles_required(*STUDY_ROLES)
+def study_solidity(trial_id):
+    trial = Trial.query.get_or_404(trial_id)
+    if trial.trial_type != "solidite":
+        return redirect(url_for("homogeneity.study", trial_id=trial.id))
+    record = HomogeneityStudy.query.filter_by(trial_id=trial.id, kind="solidity").first()
+    can_validate = current_user.role in ("admin", "chef_technique")
+
+    if request.method == "POST":
+        action = request.form.get("action", "save")
+        if record is None:
+            record = HomogeneityStudy(trial_id=trial.id, kind="solidity")
+            db.session.add(record)
+        if action == "reopen":
+            if not can_validate:
+                flash("Seul l'administrateur ou le chef technique peut rouvrir une étude validée.", "danger")
+            elif record.status == "validated":
+                record.status, record.validated_at, record.validated_by = "draft", None, None
+                db.session.commit()
+                log_action("reopen", "HomogeneityStudy", record.id, f"Étude solidité réouverte : {trial.name}")
+                flash("Étude rouverte : elle peut de nouveau être modifiée.", "info")
+            return redirect(url_for("homogeneity.study_solidity", trial_id=trial.id))
+        if record.status == "validated":
+            flash("Cette étude est validée : rouvrez-la pour la modifier.", "warning")
+            return redirect(url_for("homogeneity.study_solidity", trial_id=trial.id))
+
+        inputs = _solidity_inputs_from_form(request.form, trial)
+        res = hs.evaluate_solidity(inputs)
+        record.inputs = json.dumps(inputs)
+        record.result = json.dumps(res)
+        record.conclusion = (res.get("conclusion") or {}).get("text")
+        record.updated_by, record.updated_at = current_user.id, datetime.utcnow()
+
+        if action == "validate":
+            if not can_validate:
+                flash("Seul l'administrateur ou le chef technique peut valider l'étude.", "danger")
+            elif not res.get("conclusion") or res["conclusion"].get("provisional"):
+                flash("Étude incomplète : renseignez l'homogénéité et la stabilité à la fin de l'essai (II.1) "
+                      "pour chaque paramètre avant de valider.", "warning")
+            else:
+                record.status = "validated"
+                record.validated_by, record.validated_at = current_user.id, datetime.utcnow()
+                _sync_solidity_assessment(trial, res, current_user)
+                log_action("validate", "HomogeneityStudy", record.id, f"Étude solidité validée : {trial.name} — {record.conclusion}")
+                flash("Étude validée et reportée sur l'essai.", "success")
+        else:
+            log_action("save", "HomogeneityStudy", record.id, f"Étude solidité enregistrée : {trial.name}")
+            flash("Étude enregistrée (brouillon) : les résultats sont recalculés ci-dessous.", "success")
+        db.session.commit()
+        return redirect(url_for("homogeneity.study_solidity", trial_id=trial.id))
+
+    stored = None
+    if record and record.inputs:
+        try:
+            stored = json.loads(record.inputs)
+        except (ValueError, TypeError):
+            stored = None
+    inputs = _default_solidity_inputs(trial)
+    for key, value in (stored or {}).items():
+        if isinstance(value, dict) and isinstance(inputs.get(key), dict):
+            inputs[key].update(value)
+        else:
+            inputs[key] = value
+    res = hs.evaluate_solidity(inputs)
+    return render_template("homogeneity/study_solidity.html", trial=trial, record=record, inputs=inputs, res=res,
+                           readonly=bool(record and record.status == "validated"), can_validate=can_validate,
+                           hom_g=hs.HOM_G, stab_g=hs.STAB_G, n_params=hs.N_PARAMS)

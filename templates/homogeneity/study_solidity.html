@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Étude de solidité — {{ trial.name }}{% endblock %}
+
+{% macro badge(ok, yes, no) %}<span class="badge {{ 'bg-success' if ok else 'bg-danger' }}">{{ yes if ok else no }}</span>{% endmacro %}
+{% macro short(n) %}{{ n|replace('Dégorgement — ', 'Dég. ')|replace('Dégorgement - ', 'Dég. ')|replace('Dégradation de couleur', 'Couleur') }}{% endmacro %}
+
+{% macro sgrid(prefix, rows, nrows, names, ro, codes=none) %}
+<div class="table-responsive">
+<table class="table table-sm align-middle mb-2">
+  <thead><tr>{% if codes is not none %}<th>Échantillon</th>{% endif %}
+    {% for n in names %}<th class="text-center small" style="min-width:66px" title="{{ n }}">{{ short(n) }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in range(nrows) %}
+  <tr>
+    {% if codes is not none %}<td><input class="form-control form-control-sm" style="min-width:80px" name="hom_code_{{ r }}" value="{{ codes[r] }}" {{ 'disabled' if ro }}></td>{% endif %}
+    {% for c in range(names|length) %}
+    <td><input type="text" inputmode="decimal" class="form-control form-control-sm text-end px-1" style="min-width:56px"
+               name="{{ prefix }}_{{ r }}_{{ c }}" value="{{ rows[r][c] if rows[r][c] is not none else '' }}" {{ 'disabled' if ro }}></td>
+    {% endfor %}
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endmacro %}
+
+{% macro pair(title, pa, pb, block, nrows, names, ro) %}
+<div class="fw-semibold small">{{ title }} — Résultat 1</div>
+{{ sgrid(pa, block.set1, nrows, names, ro) }}
+<div class="fw-semibold small">{{ title }} — Résultat 2</div>
+{{ sgrid(pb, block.set2, nrows, names, ro) }}
+{% endmacro %}
+
+{% block content %}
+{% set ro = readonly %}
+{% set names = inputs.params %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <h3 class="mb-1"><i class="bi bi-clipboard2-data"></i> Étude d'homogénéité et de stabilité — {{ trial.name }}</h3>
+    <div class="text-muted">FTE 006 v06 · Essais de solidité (9 paramètres) · ISO/IEC 17043:2023 Annexe B.2.4 · Campagne {{ trial.campaign.reference }}</div>
+  </div>
+  <div class="d-flex gap-2 align-items-center">
+    {% if record and record.status == 'validated' %}
+      <span class="badge bg-success fs-6"><i class="bi bi-lock-fill"></i> Validée le {{ record.validated_at.strftime('%d/%m/%Y') }}</span>
+    {% else %}<span class="badge bg-secondary fs-6">Brouillon</span>{% endif %}
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('homogeneity.assess', trial_id=trial.id) }}">Évaluation simplifiée</a>
+  </div>
+</div>
+
+{% for w in res.warnings %}<div class="alert alert-warning py-2">{{ w }}</div>{% endfor %}
+{% if ro %}<div class="alert alert-info py-2">Étude validée : les données sont verrouillées.
+  {% if can_validate %}<form method="post" class="d-inline"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-primary ms-2">Rouvrir pour modification</button></form>{% endif %}</div>{% endif %}
+
+<form method="post" autocomplete="off">
+<input type="hidden" name="action" value="save" id="study-action">
+
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <h5 class="fw-bold">Identification et paramètres</h5>
+  <div class="row g-3">
+    <div class="col-md-4"><label class="form-label small">Référence de la campagne</label><input class="form-control" name="campaign_ref" value="{{ inputs.meta.campaign_ref }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Référence de l'échantillon testé</label><input class="form-control" name="sample_ref" value="{{ inputs.meta.sample_ref }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Méthode testée</label><input class="form-control" name="method" value="{{ inputs.meta.method }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Valeur de référence : médiane ou mode ?</label>
+      <select class="form-select" name="basis" {{ 'disabled' if ro }}>
+        <option value="median" {{ 'selected' if inputs.basis == 'median' }}>Médiane</option>
+        <option value="mode" {{ 'selected' if inputs.basis == 'mode' }}>Mode</option>
+      </select></div>
+    <div class="col-md-4"><label class="form-label small">± classe de différence par rapport à la valeur assignée</label>
+      <input class="form-control text-end" name="tolerance" placeholder="ex. 0,5 ou 1" value="{{ inputs.tolerance if inputs.tolerance is not none else '' }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Date des essais d'homogénéité</label><input type="date" class="form-control" name="hom_date" value="{{ inputs.meta.hom_date }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Date de fin de l'essai d'aptitude</label><input type="date" class="form-control" name="end_round_date" value="{{ inputs.meta.end_round_date }}" {{ 'disabled' if ro }}></div>
+    <div class="col-md-4"><label class="form-label small">Date(s) des essais de stabilité</label><input class="form-control" name="stab_date" value="{{ inputs.meta.stab_date }}" {{ 'disabled' if ro }}></div>
+  </div>
+  <details class="mt-3"><summary class="small text-muted">Noms des 9 paramètres (modifiables)</summary>
+    <div class="row g-2 mt-1">{% for n in names %}<div class="col-md-4"><input class="form-control form-control-sm" name="param_{{ loop.index0 }}" value="{{ n }}" {{ 'disabled' if ro }}></div>{% endfor %}</div></details>
+  <div class="small text-muted mt-2">Un paramètre est analysé dès que le résultat 1 de son premier échantillon est saisi : laissez vides les colonnes des paramètres non étudiés.</div>
+</div></div>
+
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <h5 class="fw-bold">I) Vérification de l'homogénéité (ISO/IEC 17043:2023, annexe B.2.4)</h5>
+  <p class="text-muted small">{{ hom_g }} échantillons maximum, 2 résultats par échantillon. Pour chaque paramètre, un résultat est « NOT OK » s'il s'écarte de la valeur de référence de plus que la tolérance, et l'écart |résultat 1 − résultat 2| doit rester dans la tolérance.</p>
+  <div class="fw-semibold small">Résultat 1</div>
+  {{ sgrid('h1', inputs.hom.set1, hom_g, names, ro, codes=inputs.hom.codes) }}
+  <div class="fw-semibold small">Résultat 2</div>
+  {{ sgrid('h2', inputs.hom.set2, hom_g, names, ro) }}
+  <label class="form-label small mt-1">Résultat éliminé s'il y a lieu</label>
+  <input class="form-control form-control-sm" name="eliminated_note" value="{{ inputs.meta.eliminated_note }}" {{ 'disabled' if ro }}>
+</div></div>
+
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <h5 class="fw-bold">II) Vérification de la stabilité</h5>
+  <h6 class="fw-bold mt-2">II.1 — Stabilité à la fin de l'essai d'aptitude</h6>
+  {{ pair('Après distribution', 'e1', 'e2', inputs.stab_end, stab_g, names, ro) }}
+
+  <h6 class="fw-bold mt-4">II.2 — Stabilité au cours du stockage</h6>
+  <select class="form-select form-select-sm mb-2" name="storage_active" style="max-width:420px" {{ 'disabled' if ro }}>
+    <option value="">— Essais de stabilité pendant le stockage ? —</option>
+    <option value="no" {{ 'selected' if inputs.storage.active is sameas false }}>Non réalisés</option>
+    <option value="yes" {{ 'selected' if inputs.storage.active is sameas true }}>Réalisés</option>
+  </select>
+  {% if inputs.storage.active %}
+    {% set titles = {'t1': 'Essai de stabilité N° 1', 't2': 'Essai de stabilité N° 2', 't3': 'Essai de stabilité N° 3', 'tf': 'Après la réception du dernier résultat des participants'} %}
+    {% for key, pre in [('t1','s1'), ('t2','s2'), ('t3','s3'), ('tf','sf')] %}
+    {% set filled = [] %}
+    {% for row in inputs.storage.tests[key].set1 %}{% for v in row %}{% if v is not none %}{% if filled.append(1) %}{% endif %}{% endif %}{% endfor %}{% endfor %}
+    <details class="mb-2" {{ 'open' if filled or loop.first }}>
+      <summary class="fw-semibold">{{ titles[key] }}</summary>
+      <div class="mt-2">{{ pair(titles[key], pre ~ 'a', pre ~ 'b', inputs.storage.tests[key], stab_g, names, ro) }}</div>
+    </details>
+    {% endfor %}
+  {% endif %}
+
+  <h6 class="fw-bold mt-4">II.3 — Stabilité au cours du transport</h6>
+  <div class="row g-2 mb-2"><div class="col-md-5">
+    <select class="form-select form-select-sm" name="transport_active" {{ 'disabled' if ro }}>
+      <option value="">— Essai de transport ? —</option>
+      <option value="no" {{ 'selected' if inputs.transport.active is sameas false }}>Non réalisé</option>
+      <option value="yes" {{ 'selected' if inputs.transport.active is sameas true }}>Réalisé</option>
+    </select></div>
+    <div class="col-md-7"><input class="form-control form-control-sm" name="transport_desc" placeholder="Conditions de simulation de l'effet du transport" value="{{ inputs.meta.transport_desc }}" {{ 'disabled' if ro }}></div></div>
+  {% if inputs.transport.active %}{{ pair('Après simulation du transport', 'ta', 'tb', inputs.transport, stab_g, names, ro) }}{% endif %}
+</div></div>
+
+{% set active = res.params|select|list %}
+{% if active %}
+<div class="card shadow-sm mb-3 border-success"><div class="card-body">
+  <h5 class="fw-bold">III) Récapitulatif des décisions par paramètre</h5>
+  <div class="table-responsive"><table class="table table-sm align-middle">
+    <thead><tr><th>Paramètre</th><th class="text-end">Référence ({{ 'mode' if res.basis == 'mode' else 'médiane' }})</th><th>Homogénéité</th><th>Fin de campagne</th><th>Stockage</th><th>Transport</th><th>Décision</th></tr></thead>
+    <tbody>
+    {% for a in active %}{% if a.hom %}
+      <tr>
+        <td>{{ a.name }}</td>
+        <td class="text-end">{{ a.reference }}</td>
+        <td>{{ badge(a.hom.all_ok, 'Homogènes', 'Non homogènes') }}
+          {% if a.hom.eliminated %}<div class="small text-danger">À éliminer : {{ a.hom.eliminated|join(', ') }}</div>{% endif %}
+          {% if a.hom.range_issue %}<div class="small text-warning">Écart |x1−x2| &gt; tolérance</div>{% endif %}</td>
+        <td>{% if a.stability.end %}{{ badge(a.stability.end == 'Les échantillons sont stables', 'Stables', 'Non stables') }}{% else %}—{% endif %}</td>
+        <td>{% if a.stability.storage %}{{ badge(a.stability.storage == 'Les échantillons sont stables', 'Stables', 'Non stables') }}{% else %}—{% endif %}</td>
+        <td>{% if a.stability.transport %}{{ badge(a.stability.transport == 'Les échantillons sont stables', 'Stables', 'Non stables') }}{% else %}—{% endif %}</td>
+        <td>{{ badge(a.ok, 'Homogènes et stables', 'Non conforme') }}</td>
+      </tr>
+    {% endif %}{% endfor %}
+    </tbody></table></div>
+  {% if res.conclusion %}
+  <div class="alert {{ 'alert-success' if res.conclusion.ok else 'alert-danger' }} fs-6 mb-2">
+    <strong>Conclusion sur la stabilité et l'homogénéité de l'entité soumise à l'essai d'aptitude :</strong><br>{{ res.conclusion.text }}
+    {% if res.conclusion.provisional %}<div class="small mt-1">Conclusion provisoire : l'étude de stabilité II.1 est à compléter pour tous les paramètres.</div>{% endif %}
+  </div>{% endif %}
+  <label class="form-label small">En cas d'instabilité : décision prise et date du PV de réunion</label>
+  <input class="form-control form-control-sm" name="pv_note" value="{{ inputs.meta.pv_note }}" {{ 'disabled' if ro }}>
+</div></div>
+{% else %}
+<div class="alert alert-info">Saisissez les résultats d'au moins un paramètre (avec une valeur répétée si vous choisissez le mode) et la tolérance, puis cliquez sur « Calculer et enregistrer ».</div>
+{% endif %}
+
+{% if not ro %}
+<div class="d-flex flex-wrap gap-2 mb-5">
+  <button type="submit" class="btn btn-primary" onclick="document.getElementById('study-action').value='save'"><i class="bi bi-calculator"></i> Calculer et enregistrer</button>
+  {% if can_validate %}<button type="submit" class="btn btn-success" onclick="document.getElementById('study-action').value='validate'; return confirm('Valider l\'étude ? Elle sera verrouillée et son résultat reporté sur l\'essai.');"><i class="bi bi-check2-circle"></i> Valider l'étude</button>{% endif %}
+</div>
+{% endif %}
+</form>
+{% endblock %}
