@@ -9,10 +9,10 @@
     <p><strong>{{ data.reference }}</strong> — {{ data.name }}<br>
     <span class="text-muted">{{ data.get('start_date','-') }} → {{ data.get('end_date','-') }}</span></p>
 
-    <h6>Essais ({{ data.trials|length }})</h6>
+    <h6>Feuilles de saisie ({{ data.get('sheets', [])|length }}) — {{ data.trials|length }} ligne(s)</h6>
     <ul>
-    {% for t in data.trials %}
-        <li>{{ t.name }} ({{ t.parameter }}, {{ t.unit }})</li>
+    {% for s in data.get('sheets', []) %}
+        <li><b>{{ s.title }}</b> — {{ s.rows|length }} ligne(s){% if s.name %} · essai « {{ s.name }} »{% endif %}{% if s.sample %} · <code>{{ s.sample }}</code>{% endif %}</li>
     {% endfor %}
     </ul>
 

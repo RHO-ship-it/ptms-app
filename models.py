@@ -441,3 +441,13 @@ class Parcel(db.Model):
             return json.loads(self.items) if self.items else {}
         except ValueError:
             return {}
+
+
+class WizardDraft(db.Model):
+    """Brouillon du wizard de création de campagne (côté serveur : trop volumineux pour le cookie de session)."""
+    __tablename__ = "wizard_drafts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), unique=True, nullable=False)
+    data = db.Column(db.Text, nullable=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
