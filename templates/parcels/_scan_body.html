@@ -1,0 +1,58 @@
+<div class="scan-card">
+    <div class="scan-header">
+        <div class="d-inline-flex align-items-center justify-content-center bg-white bg-opacity-10 rounded-circle mb-2" style="width:54px; height:54px;">
+            <i class="bi bi-qr-code-scan fs-2 text-white"></i>
+        </div>
+        <h4 class="fw-bold mb-1">Accusé de Réception Échantillon</h4>
+        <div class="text-white-50" style="font-size:13px;">Système Logistique d'Essais d'Aptitude ISO/IEC 17043</div>
+    </div>
+
+    <div class="scan-body">
+        <!-- Statut de réception -->
+        {% if parcel.received %}
+        <div class="alert alert-success text-center p-3 mb-4" style="border-radius:12px; background:#D1FAE5; border-color:#6EE7B7; color:#065F46;">
+            <i class="bi bi-check-circle-fill fs-3 d-block mb-1" style="color:#10B981;"></i>
+            <div class="fw-bold fs-6">COLIS D'ÉCHANTILLON REÇU</div>
+            <div style="font-size:13px;" class="mt-1">
+                Horodatage exact : <strong>{{ parcel.reception_date.strftime('%d/%m/%Y à %H:%M:%S') if parcel.reception_date else 'NC' }}</strong>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-warning text-center p-3 mb-4" style="border-radius:12px; background:#FEF3C7; border-color:#FDE68A; color:#92400E;">
+            <i class="bi bi-box-seam fs-3 d-block mb-1" style="color:#D97706;"></i>
+            <div class="fw-bold fs-6">EN ATTENTE DE CONFIRMATION DE RÉCEPTION</div>
+            <div style="font-size:12px;" class="mt-1">Veuillez vérifier les informations ci-dessous et cliquer sur le bouton pour enregistrer la réception.</div>
+        </div>
+        {% endif %}
+
+        <!-- Métadonnées du colis -->
+        <div class="mb-4">
+            <div class="info-row"><span class="text-muted" style="font-size:12.5px;"><i class="bi bi-collection me-1"></i>Campagne</span>
+                <strong class="text-dark">{{ parcel.campaign.reference }}</strong></div>
+            <div class="info-row"><span class="text-muted" style="font-size:12.5px;"><i class="bi bi-building me-1"></i>Laboratoire destinataire</span>
+                <strong class="text-dark">{{ parcel.laboratory.code }} — {{ parcel.laboratory.name[:25] }}</strong></div>
+            <div class="info-row"><span class="text-muted" style="font-size:12.5px;"><i class="bi bi-flask me-1"></i>Contenu ({{ groups|length }} essai(s))</span>
+                <div class="text-end">{% for g in groups %}<div><strong class="text-primary">{{ g.name }}</strong> <span class="badge bg-dark" style="font-family:monospace;">{{ g.sample_code or g.sample or '—' }}</span></div>{% endfor %}</div></div>
+            <div class="info-row"><span class="text-muted" style="font-size:12.5px;"><i class="bi bi-truck me-1"></i>Transporteur & Tracking N°</span>
+                <div class="text-end"><div class="fw-bold">{{ parcel.carrier or 'Transporteur Standard' }}</div>
+                {% if parcel.tracking_number %}<div class="text-muted" style="font-size:11.5px; font-family:monospace;">N° {{ parcel.tracking_number }}</div>{% endif %}</div></div>
+            <div class="info-row"><span class="text-muted" style="font-size:12.5px;"><i class="bi bi-calendar-event me-1"></i>Date limite de clôture</span>
+                <strong class="text-danger">{{ due.strftime('%d/%m/%Y') if due else 'Non spécifiée' }}</strong></div>
+        </div>
+
+        <!-- Bouton d'action -->
+        {% if not parcel.received %}
+        <form method="POST">
+            <button type="submit" class="btn-scan-confirm">
+                <i class="bi bi-check2-circle me-2"></i> CONFIRMER LA RÉCEPTION DU COLIS
+            </button>
+        </form>
+        {% else %}
+        <div class="text-center">
+            <a href="{{ url_for('participants.portal') }}" class="ptms-btn ptms-btn-ghost w-100 justify-content-center">
+                <i class="bi bi-arrow-left me-1"></i> Accéder à mon colis et cocher les échantillons
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>

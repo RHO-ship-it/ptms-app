@@ -70,6 +70,8 @@ def create_app(config_class=Config):
     app.register_blueprint(catalogue_bp, url_prefix="/catalogue")
     from blueprints.sheets import sheets_bp
     app.register_blueprint(sheets_bp, url_prefix="/sheets")
+    from blueprints.parcels import parcels_bp
+    app.register_blueprint(parcels_bp, url_prefix="/parcels")
 
     # Recharge les PDF déposés dans documents/ (la base SQLite de Render est remise à zéro à chaque déploiement).
     from blueprints.catalogue import seed_documents
