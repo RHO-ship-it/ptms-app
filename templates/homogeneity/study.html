@@ -44,16 +44,30 @@
 
 {% block content %}
 {% set ro = readonly %}
-<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
   <div>
     <h3 class="mb-1"><i class="bi bi-clipboard2-data"></i> Étude d'homogénéité et de stabilité — {{ trial.name }}</h3>
-    <div class="text-muted">FTE 006 v06 · ISO 13528:2022 Annexe B · Campagne {{ trial.campaign.reference }} · {{ trial.parameter }}{% if trial.unit %} ({{ trial.unit }}){% endif %}</div>
+    <div class="text-muted">Campagne {{ trial.campaign.reference }} · {{ trial.parameter }}{% if trial.unit %} ({{ trial.unit }}){% endif %} · ISO 13528:2022 Annexe B</div>
   </div>
-  <div class="d-flex gap-2 align-items-center">
+  <div class="d-flex gap-2 align-items-center flex-wrap">
     {% if record and record.status == 'validated' %}
       <span class="badge bg-success fs-6"><i class="bi bi-lock-fill"></i> Validée le {{ record.validated_at.strftime('%d/%m/%Y') }}</span>
     {% else %}<span class="badge bg-secondary fs-6">Brouillon</span>{% endif %}
-    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('homogeneity.assess', trial_id=trial.id) }}">Évaluation simplifiée</a>
+    <a class="btn btn-sm btn-outline-danger" href="{{ url_for('homogeneity.study_pdf', trial_id=trial.id) }}"><i class="bi bi-file-earmark-pdf"></i> PDF FTE 006</a>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3 bg-light-subtle">
+  <div class="card-body py-3">
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle">Interface unique</span>
+      {% if res.hom %}
+      <span class="badge {{ 'bg-success' if res.hom.outcome == 'homogeneous' else ('bg-warning text-dark' if res.hom.outcome == 'sigma_prime' else 'bg-danger') }}">Homogénéité : {{ res.hom.outcome }}</span>
+      {% endif %}
+      {% if res.stability %}
+      <span class="badge {{ 'bg-success' if res.stability.stable else 'bg-danger' }}">Stabilité : {{ 'OK' if res.stability.stable else 'NOT OK' }}</span>
+      {% endif %}
+    </div>
   </div>
 </div>
 
@@ -66,7 +80,7 @@
 
 <!-- ═══ Identification ═══ -->
 <div class="card shadow-sm mb-3"><div class="card-body">
-  <h5 class="fw-bold">Identification</h5>
+  <h5 class="fw-bold mb-3">1. Identification</h5>
   <div class="row g-3">
     <div class="col-md-4"><label class="form-label small">Référence de la campagne</label><input class="form-control" name="campaign_ref" value="{{ inputs.meta.campaign_ref }}" {{ 'disabled' if ro }}></div>
     <div class="col-md-4"><label class="form-label small">Référence de l'échantillon testé</label><input class="form-control" name="sample_ref" value="{{ inputs.meta.sample_ref }}" {{ 'disabled' if ro }}></div>
@@ -79,7 +93,7 @@
 
 <!-- ═══ σpt ═══ -->
 <div class="card shadow-sm mb-3"><div class="card-body">
-  <h5 class="fw-bold">I.2 — σpt de TTS (campagnes antérieures / norme)</h5>
+  <h5 class="fw-bold mb-3">σpt de référence</h5>
   <div class="row g-3 mb-2">
     <div class="col-md-4"><label class="form-label small">Mode d'expression du σpt</label>
       <select class="form-select" name="sigma_mode" {{ 'disabled' if ro }}>
@@ -104,8 +118,8 @@
 
 <!-- ═══ I — Homogénéité ═══ -->
 <div class="card shadow-sm mb-3"><div class="card-body">
-  <h5 class="fw-bold">I) Homogénéité des échantillons (ISO 13528:2022, annexe B)</h5>
-  <p class="text-muted small">Saisissez jusqu'à {{ max_g }} échantillons et {{ max_m }} prises d'essai, dans l'ordre de réalisation des essais. Un échantillon est pris en compte dès que son résultat 1 est renseigné ; tous doivent avoir le même nombre de résultats.</p>
+  <h5 class="fw-bold mb-3">2. Homogénéité</h5>
+  <p class="text-muted small mb-3">Saisissez jusqu'à {{ max_g }} échantillons et {{ max_m }} prises d'essai, dans l'ordre de réalisation des essais. Un échantillon est pris en compte dès que son résultat 1 est renseigné ; tous doivent avoir le même nombre de résultats.</p>
   {{ grid('hom', inputs.hom.rows, max_g, max_m, ro, codes=inputs.hom.codes, excl=inputs.hom.excluded) }}
 </div></div>
 
@@ -200,14 +214,17 @@
 
 <!-- ═══ II — Stabilité ═══ -->
 <div class="card shadow-sm mb-3"><div class="card-body">
-  <h5 class="fw-bold">II) Stabilité des échantillons (ISO 13528:2022, annexe B, pages 53-56)</h5>
-  <p class="text-muted small">Pour chaque essai de stabilité : 2 à 4 échantillons, mêmes prises d'essai que ci-dessus. La moyenne « avant » est la moyenne des résultats d'homogénéité retenus.</p>
+  <h5 class="fw-bold mb-3">3. Stabilité</h5>
+  <p class="text-muted small mb-3">Pour chaque essai de stabilité : 2 à 4 échantillons, mêmes prises d'essai que ci-dessus. La moyenne « avant » est la moyenne des résultats d'homogénéité retenus.</p>
 
-  <h6 class="fw-bold mt-3">II.1 — Stabilité à la fin de l'essai d'aptitude</h6>
+  <div class="border rounded p-3 bg-light-subtle mb-3">
+    <div class="fw-bold text-uppercase small text-muted mb-2">Partie 3 — suite de la stabilité</div>
+    <h6 class="fw-bold mt-3">3.1 — Stabilité à la fin de l'essai d'aptitude</h6>
+  </div>
   {{ grid('stab', inputs.stab_end.rows, stab_g, max_m, ro) }}
   {{ stab_block(res.stab_end) }}
 
-  <h6 class="fw-bold mt-4">II.2 — Effet du transport</h6>
+  <h6 class="fw-bold mt-4">3.2 — Effet du transport</h6>
   <div class="row g-2 mb-2"><div class="col-md-6">
     <select class="form-select form-select-sm" name="transport_sensitive" {{ 'disabled' if ro }}>
       <option value="">— L'entité est-elle sensible au transport ? —</option>
@@ -217,19 +234,55 @@
     <div class="col-md-6"><input class="form-control form-control-sm" name="transport_desc" placeholder="Comment les conditions de transport sont simulées" value="{{ inputs.meta.transport_desc }}" {{ 'disabled' if ro }}></div></div>
   {% if inputs.transport.sensitive %}{{ grid('trn', inputs.transport.rows, stab_g, max_m, ro) }}{{ stab_block(res.transport) }}{% endif %}
 
-  <h6 class="fw-bold mt-4">II.3 — Effet du stockage jusqu'à la fin de l'essai d'aptitude</h6>
+  <h6 class="fw-bold mt-4">3.3 — Effet du stockage jusqu'à la fin de l'essai d'aptitude</h6>
   <select class="form-select form-select-sm mb-2" name="storage_risk" style="max-width:520px" {{ 'disabled' if ro }}>
     <option value="">— L'entité risque-t-elle d'être instable ? —</option>
     <option value="no" {{ 'selected' if inputs.storage.at_risk is sameas false }}>Ne risque pas d'être instable jusqu'à la fin de l'essai</option>
     <option value="yes" {{ 'selected' if inputs.storage.at_risk is sameas true }}>Risque d'être instable jusqu'à la fin de l'essai</option>
   </select>
   {% if inputs.storage.at_risk %}
+  <div class="border rounded p-3 bg-light-subtle mb-3">
+    <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+      <div class="fw-semibold">Suivi de stabilité au stockage</div>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="addStorageRow()">+ Ajouter une autre stabilité</button>
+    </div>
+    {% set storage_rows = inputs.storage.timeline if inputs.storage.timeline else [{'date':'', 'condition':'', 'x1': none, 'x2': none, 'mean': none}] %}
+    <div id="storage-rows-wrapper">
+      {% for row in storage_rows %}
+      <div class="row g-3 mb-2 storage-row" data-row="{{ loop.index0 }}">
+        <div class="col-md-3">
+          <label class="form-label small">Date</label>
+          <input type="date" class="form-control form-control-sm" name="storage_date_{{ loop.index0 }}" value="{{ row.date if row.date else '' }}" {{ 'disabled' if ro }}>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small">Condition</label>
+          <input type="text" class="form-control form-control-sm" name="storage_condition_{{ loop.index0 }}" value="{{ row.condition if row.condition else '' }}" placeholder="ex. T0 / 7 jours / 14 jours" {{ 'disabled' if ro }}>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">Résultat 1</label>
+          <input type="number" step="any" class="form-control form-control-sm" name="storage_x1_{{ loop.index0 }}" value="{{ row.x1 if row.x1 is not none else '' }}" {{ 'disabled' if ro }}>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">Résultat 2</label>
+          <input type="number" step="any" class="form-control form-control-sm" name="storage_x2_{{ loop.index0 }}" value="{{ row.x2 if row.x2 is not none else '' }}" {{ 'disabled' if ro }}>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">Moyenne</label>
+          <input type="number" step="any" class="form-control form-control-sm" name="storage_mean_{{ loop.index0 }}" value="{{ row.mean if row.mean is not none else '' }}" {{ 'disabled' if ro }}>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="mt-3">
+      <div class="small text-muted mb-2">La courbe de stabilité est liée à cette série de mesures au stockage.</div>
+      {% if charts.storage %}<div class="fw-semibold mt-2">Tendance des moyennes</div>{{ charts.storage }}{% endif %}
+    </div>
+  </div>
   <div class="row g-3">
     <div class="col-xl-6"><div class="fw-semibold">Essai de stabilité 1</div>{{ grid('sto1', inputs.storage.rows1, stab_g, max_m, ro) }}{{ stab_block(res.storage1) }}</div>
     <div class="col-xl-6"><div class="fw-semibold">Essai de stabilité 2</div>{{ grid('sto2', inputs.storage.rows2, stab_g, max_m, ro) }}{{ stab_block(res.storage2) }}</div>
   </div>
-  {% if charts.storage %}<div class="fw-semibold mt-2">Tendance des moyennes</div>{{ charts.storage }}{% endif %}
-  <select class="form-select form-select-sm mt-2" name="storage_trend" style="max-width:420px" {{ 'disabled' if ro }}>
+  <select class="form-select form-select-sm mt-3" name="storage_trend" style="max-width:420px" {{ 'disabled' if ro }}>
     <option value="">— Votre décision sur la tendance —</option>
     <option value="none" {{ 'selected' if inputs.storage.trend == 'none' }}>Pas de tendance significative</option>
     <option value="present" {{ 'selected' if inputs.storage.trend == 'present' }}>Présence de tendance significative</option>
@@ -239,7 +292,7 @@
 
 <!-- ═══ III — Récapitulatif ═══ -->
 <div class="card shadow-sm mb-3 border-success"><div class="card-body">
-  <h5 class="fw-bold">III) Récapitulatif et conclusion</h5>
+  <h5 class="fw-bold mb-3">4. Synthèse et conclusion</h5>
   {% set s = res.stability %}
   <table class="table table-sm">
     <tr><td style="width:46%">Homogénéité</td><td>{{ res.hom.final_text if res.hom.final_text else '—' }}</td></tr>
@@ -267,4 +320,38 @@
 </div>
 {% endif %}
 </form>
+
+<script>
+function addStorageRow() {
+const wrapper = document.getElementById('storage-rows-wrapper');
+if (!wrapper) return;
+const rowCount = wrapper.querySelectorAll('.storage-row').length;
+const row = document.createElement('div');
+row.className = 'row g-3 mb-2 storage-row';
+row.dataset.row = String(rowCount);
+row.innerHTML = `
+  <div class="col-md-3">
+    <label class="form-label small">Date</label>
+    <input type="date" class="form-control form-control-sm" name="storage_date_${rowCount}" value="">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label small">Condition</label>
+    <input type="text" class="form-control form-control-sm" name="storage_condition_${rowCount}" placeholder="ex. T0 / 7 jours / 14 jours" value="">
+  </div>
+  <div class="col-md-2">
+    <label class="form-label small">Résultat 1</label>
+    <input type="number" step="any" class="form-control form-control-sm" name="storage_x1_${rowCount}" value="">
+  </div>
+  <div class="col-md-2">
+    <label class="form-label small">Résultat 2</label>
+    <input type="number" step="any" class="form-control form-control-sm" name="storage_x2_${rowCount}" value="">
+  </div>
+  <div class="col-md-2">
+    <label class="form-label small">Moyenne</label>
+    <input type="number" step="any" class="form-control form-control-sm" name="storage_mean_${rowCount}" value="">
+  </div>
+`;
+wrapper.appendChild(row);
+}
+</script>
 {% endblock %}

@@ -428,9 +428,37 @@ def evaluate(inputs):
         res["storage2"] = stability_block(before_mean, r2, sigma) if r2 else None
         res["storage_trend_text"] = {"none": "Pas de tendance significative",
                                      "present": "Présence de tendance significative"}.get(st.get("trend"))
-        res["storage_means"] = [before_mean] + [b["mean_after"] for b in (res["storage1"], res["storage2"]) if b and not b.get("error")]
+
+        storage_points = []
+        for point in (st.get("timeline") or []):
+            mean_v = point.get("mean")
+            if mean_v is None:
+                x1 = point.get("x1")
+                x2 = point.get("x2")
+                if x1 is not None or x2 is not None:
+                    mean_v = (x1 + x2) / 2 if x1 is not None and x2 is not None else (x1 if x1 is not None else x2)
+            if mean_v is not None:
+                storage_points.append({"date": point.get("date"), "condition": point.get("condition"), "mean": mean_v})
+        res["storage_points"] = storage_points
+
+        seen = set()
+        def add_mean(value):
+            if value is None:
+                return
+            key = round(float(value), 12)
+            if key not in seen:
+                seen.add(key)
+                series.append(float(value))
+
+        series = [before_mean]
+        for point in storage_points:
+            add_mean(point.get("mean"))
+        for block in (res["storage1"], res["storage2"]):
+            if block and not block.get("error"):
+                add_mean(block.get("mean_after"))
         if res["stab_end"] and not res["stab_end"].get("error"):
-            res["storage_means"].append(res["stab_end"]["mean_after"])
+            add_mean(res["stab_end"].get("mean_after"))
+        res["storage_means"] = series
 
     blocks = [res["stab_end"], res["transport"], res["storage1"], res["storage2"]]
     for b, name in zip(blocks, ["fin d'essai", "transport", "stockage 1", "stockage 2"]):
