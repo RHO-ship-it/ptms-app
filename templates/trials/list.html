@@ -26,29 +26,37 @@
                 </td>
                 <td>{{ t.target_sd if t.target_sd is not none else '-' }}</td>
                 <td>{{ t.due_date.strftime('%d/%m/%Y') if t.due_date else '-' }}</td>
-                <td class="d-flex gap-1">
-                    {% if current_user.role in ['admin','chef_technique'] %}
-                    <a href="{{ url_for('trials.edit_trial', trial_id=t.id) }}" class="btn btn-sm btn-outline-secondary">Modifier</a>
-                    {% endif %}
-                    {% if current_user.role == 'admin' %}
-                    <form action="{{ url_for('trials.delete_trial', trial_id=t.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cet essai ? (Action irréversible : supprime résultats associés)');">
-                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </form>
-                    {% endif %}
-                    {% if t.trial_type == 'quantitative' %}
-                    <a href="{{ url_for('homogeneity.assess', trial_id=t.id) }}" class="btn btn-sm btn-outline-info" title="Homogénéité / Stabilité (ISO 13528 Annexe B)">
-                        <i class="bi bi-shield-check"></i>
-                        {% if t.homogeneity_assessment and t.homogeneity_assessment.homogeneity_conform is not none %}
-                            {% if t.homogeneity_assessment.homogeneity_conform and (t.homogeneity_assessment.stability_conform is none or t.homogeneity_assessment.stability_conform) %}
-                                <span class="badge bg-success ms-1">OK</span>
-                            {% else %}
-                                <span class="badge bg-danger ms-1">!</span>
-                            {% endif %}
+                <td>
+                    <div class="d-flex flex-wrap gap-1 justify-content-end">
+                        {% if current_user.role in ['admin','chef_technique'] %}
+                        <a href="{{ url_for('trials.edit_trial', trial_id=t.id) }}" class="btn btn-sm btn-outline-secondary" title="Modifier l’essai">
+                            <i class="bi bi-pencil-square"></i>
+                        </a>
                         {% endif %}
-                    </a>
-                    {% endif %}
+                        {% if t.trial_type in ['quantitative', 'qualitative', 'solidite'] %}
+                        {% set study_exists = t.homogeneity_studies and t.homogeneity_studies|length > 0 %}
+                        <a href="{{ url_for('homogeneity.assess', trial_id=t.id) }}" class="btn btn-sm {{ 'btn-success' if study_exists else 'btn-outline-info' }}" title="Étude FTE 006 — Homogénéité / Stabilité">
+                            <i class="bi bi-shield-check"></i>
+                            <span class="d-none d-md-inline">FTE 006</span>
+                            {% if t.trial_type == 'quantitative' and t.homogeneity_assessment and t.homogeneity_assessment.homogeneity_conform is not none %}
+                                {% if t.homogeneity_assessment.homogeneity_conform and (t.homogeneity_assessment.stability_conform is none or t.homogeneity_assessment.stability_conform) %}
+                                    <span class="badge bg-light text-success ms-1">OK</span>
+                                {% else %}
+                                    <span class="badge bg-light text-danger ms-1">!</span>
+                                {% endif %}
+                            {% elif study_exists %}
+                                <span class="badge bg-light text-success ms-1">OK</span>
+                            {% endif %}
+                        </a>
+                        {% endif %}
+                        {% if current_user.role == 'admin' %}
+                        <form action="{{ url_for('trials.delete_trial', trial_id=t.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cet essai ? (Action irréversible : supprime résultats associés)');">
+                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer l’essai">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
                 </td>
             </tr>
         {% else %}

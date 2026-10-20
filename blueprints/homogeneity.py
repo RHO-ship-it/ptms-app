@@ -4,7 +4,7 @@ from datetime import datetime
 
 from markupsafe import Markup
 
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file
 from flask_login import login_required, current_user
 
 from extensions import db
@@ -137,7 +137,7 @@ def _default_inputs(trial):
         "stab_end": {"rows": [[None] * hc.MAX_M for _ in range(hc.MAX_STAB_G)]},
         "transport": {"sensitive": None, "rows": [[None] * hc.MAX_M for _ in range(hc.MAX_STAB_G)]},
         "storage": {"at_risk": None, "rows1": [[None] * hc.MAX_M for _ in range(hc.MAX_STAB_G)],
-                    "rows2": [[None] * hc.MAX_M for _ in range(hc.MAX_STAB_G)], "trend": ""},
+                    "rows2": [[None] * hc.MAX_M for _ in range(hc.MAX_STAB_G)], "trend": "", "timeline": []},
     }
 
 
@@ -154,6 +154,24 @@ def _inputs_from_form(form, trial):
            "rows": _read_grid(form, "hom", hc.MAX_G, hc.MAX_M),
            "excluded": [i for i in range(hc.MAX_G) if form.get(f"hom_excl_{i}")]}
     trend = lambda k: f(k) if f(k) in ("none", "present") else ""
+    storage_timeline = []
+    i = 0
+    while True:
+        row_keys = [
+            f"storage_date_{i}", f"storage_condition_{i}", f"storage_x1_{i}", f"storage_x2_{i}", f"storage_mean_{i}",
+        ]
+        if not any(k in form for k in row_keys):
+            break
+        date_raw = (f(f"storage_date_{i}") or "").strip()
+        condition = (f(f"storage_condition_{i}") or "").strip()[:80]
+        x1 = _num(f(f"storage_x1_{i}"))
+        x2 = _num(f(f"storage_x2_{i}"))
+        mean = _num(f(f"storage_mean_{i}"))
+        if mean is None and (x1 is not None or x2 is not None):
+            mean = (x1 + x2) / 2 if x1 is not None and x2 is not None else (x1 if x1 is not None else x2)
+        if date_raw or condition or x1 is not None or x2 is not None or mean is not None:
+            storage_timeline.append({"date": date_raw, "condition": condition, "x1": x1, "x2": x2, "mean": mean})
+        i += 1
     return {
         "meta": meta, "sigma": sigma, "hom": hom,
         "trend_individual": trend("trend_individual"), "trend_means": trend("trend_means"),
@@ -161,7 +179,8 @@ def _inputs_from_form(form, trial):
         "transport": {"sensitive": _flag(f("transport_sensitive")),
                       "rows": _read_grid(form, "trn", hc.MAX_STAB_G, hc.MAX_M)},
         "storage": {"at_risk": _flag(f("storage_risk")), "rows1": _read_grid(form, "sto1", hc.MAX_STAB_G, hc.MAX_M),
-                    "rows2": _read_grid(form, "sto2", hc.MAX_STAB_G, hc.MAX_M), "trend": trend("storage_trend")},
+                    "rows2": _read_grid(form, "sto2", hc.MAX_STAB_G, hc.MAX_M), "trend": trend("storage_trend"),
+                    "timeline": storage_timeline},
     }
 
 
@@ -346,9 +365,172 @@ def study(trial_id):
                            sigma_rows=SIGMA_REF_ROWS)
 
 
+def _pdf_symbol_text(c, x, y, text, size=10, font='Helvetica', color=None):
+    """Dessine le texte en basculant automatiquement vers la police Symbol pour les grecs / symboles."""
+    if color is not None:
+        c.setFillColor(color)
+    current_font = font
+    if not text:
+        return x
+    for ch in text:
+        target_font = 'Symbol' if ch in "σμΣπΩαβγδϵε≥≤√±°µ∑∏" else font
+        if target_font != current_font:
+            c.setFont(target_font, size)
+            current_font = target_font
+        c.drawString(x, y, ch)
+        x += c.stringWidth(ch, current_font, size)
+    return x
+
+
+def _render_study_pdf(trial, kind):
+    """Génère un PDF de l’étude FTE 006 sans ajouter de police externe au dépôt."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.pdfgen import canvas
+
+    record = HomogeneityStudy.query.filter_by(trial_id=trial.id, kind=kind).first()
+    if kind == "quantitative":
+        stored = json.loads(record.inputs) if record and record.inputs else None
+        inputs = _merge_inputs(trial, stored)
+        res = _compute(inputs)
+    elif kind == "ordinal":
+        stored = json.loads(record.inputs) if record and record.inputs else None
+        inputs = _default_ordinal_inputs(trial)
+        if stored:
+            for key, value in stored.items():
+                if isinstance(value, dict) and isinstance(inputs.get(key), dict):
+                    inputs[key].update(value)
+                else:
+                    inputs[key] = value
+        res = ho.evaluate_ordinal(inputs)
+    else:
+        stored = json.loads(record.inputs) if record and record.inputs else None
+        inputs = _default_solidity_inputs(trial)
+        if stored:
+            for key, value in stored.items():
+                if isinstance(value, dict) and isinstance(inputs.get(key), dict):
+                    inputs[key].update(value)
+                else:
+                    inputs[key] = value
+        res = hs.evaluate_solidity(inputs)
+
+    buffer = __import__("io").BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    page_w, page_h = A4
+    y = page_h - 20 * mm
+    c.setTitle(f"Étude FTE 006 — {trial.name}")
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(20 * mm, y, f"Étude d'homogénéité et de stabilité — {trial.name}")
+    y -= 10 * mm
+    c.setFont("Helvetica", 10)
+    x = _pdf_symbol_text(c, 20 * mm, y, "FTE 006 v06 · ", size=10)
+    c.drawString(x, y, f"Campagne {trial.campaign.reference if trial.campaign else ''}")
+    y -= 7 * mm
+
+    if kind == "quantitative":
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(20 * mm, y, "Résumé")
+        y -= 7 * mm
+        c.setFont("Helvetica", 10)
+        x = _pdf_symbol_text(c, 20 * mm, y, "σpt : ", size=10)
+        val = res.get("sigma_pt") if isinstance(res, dict) else None
+        if val is None:
+            val = "non renseigné"
+        c.drawString(x, y, str(val))
+        y -= 6 * mm
+        concl = (res.get("conclusion") or {}).get("text") if isinstance(res, dict) else None
+        if concl:
+            c.drawString(20 * mm, y, "Conclusion :")
+            y -= 6 * mm
+            wrapped = []
+            line = ""
+            for word in concl.split():
+                candidate = f"{line} {word}".strip()
+                if c.stringWidth(candidate, "Helvetica", 10) > (page_w - 40 * mm):
+                    wrapped.append(line)
+                    line = word
+                else:
+                    line = candidate
+            if line:
+                wrapped.append(line)
+            for line in wrapped[:8]:
+                c.drawString(20 * mm, y, line)
+                y -= 5 * mm
+        else:
+            c.drawString(20 * mm, y, "Aucune conclusion calculée.")
+            y -= 6 * mm
+    else:
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(20 * mm, y, "Conclusion")
+        y -= 7 * mm
+        c.setFont("Helvetica", 10)
+        conclusion = (res.get("conclusion") or {}).get("text") or "Étude non calculée"
+        for line in [conclusion[i:i+80] for i in range(0, len(conclusion), 80)][:8]:
+            c.drawString(20 * mm, y, line)
+            y -= 5 * mm
+
+    if kind == "ordinal":
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(20 * mm, y, "Décisions par paramètre")
+        y -= 7 * mm
+        for item in res.get("params", [])[:8]:
+            if not item:
+                continue
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(20 * mm, y, item.get("name", "Paramètre"))
+            c.setFont("Helvetica", 9)
+            x = 90 * mm
+            _pdf_symbol_text(c, x, y, f"réf. {item.get('reference', '')}  ")
+            c.drawString(x + c.stringWidth("réf. ", "Helvetica", 9) + c.stringWidth(str(item.get('reference', '')), 'Helvetica', 9), y, f"• {item.get('text', '')}")
+            y -= 5 * mm
+            if y < 30 * mm:
+                c.showPage(); y = page_h - 20 * mm
+    elif kind == "solidity":
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(20 * mm, y, "Paramètres")
+        y -= 7 * mm
+        for item in (res.get("params") or [])[:9]:
+            if not item:
+                continue
+            label = item.get("name", "Paramètre")
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(20 * mm, y, label[:60])
+            c.setFont("Helvetica", 9)
+            c.drawString(100 * mm, y, item.get("text", ""))
+            y -= 5 * mm
+            if y < 30 * mm:
+                c.showPage(); y = page_h - 20 * mm
+
+    c.setFont("Helvetica-Oblique", 8)
+    c.drawString(20 * mm, 12 * mm, "Document généré depuis PTMS — police native ReportLab (sans fichier ajouté au dépôt).")
+    c.save()
+    return buffer.getvalue()
+
+
+@homogeneity_bp.route("/trial/<int:trial_id>/study-pdf")
+@login_required
+@roles_required(*STUDY_ROLES)
+def study_pdf(trial_id):
+    """Télécharge le PDF de l’étude FTE 006 pour l’essai courant."""
+    trial = Trial.query.get_or_404(trial_id)
+    if trial.trial_type == "quantitative":
+        kind = "quantitative"
+    elif trial.trial_type == "qualitative":
+        kind = "ordinal"
+    elif trial.trial_type == "solidite":
+        kind = "solidity"
+    else:
+        flash("Type d’essai non pris en charge pour l’export PDF.", "warning")
+        return redirect(url_for("homogeneity.assess", trial_id=trial.id))
+    pdf = _render_study_pdf(trial, kind)
+    filename = f"FTE_006_{trial.trial_type}_{trial.campaign.reference if trial.campaign else 'campagne'}_{trial.name}.pdf".replace("/", "-")
+    return send_file(__import__("io").BytesIO(pdf), mimetype="application/pdf", as_attachment=True, download_name=filename)
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 #  ÉTUDE QUALITATIVE ORDINALE (fiche FTE 006 v06, page 5/6)
-# ═════════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════
 
 def _blank_grid(nrows):
     return [[None] * ho.MAX_M for _ in range(nrows)]
