@@ -521,6 +521,10 @@ def _render_study_excel(trial, kind):
     from openpyxl.styles import Font, PatternFill, Alignment
 
     inputs, res = _study_payload(trial, kind)
+    hom_stats = (res or {}).get("hom") or {}
+    stab_end_stats = (res or {}).get("stab_end") or {}
+    conclusion_text = ((res or {}).get("conclusion") or {}).get("text")
+
     wb = Workbook()
     ws = wb.active
     ws.title = "Synthèse"
@@ -540,62 +544,62 @@ def _render_study_excel(trial, kind):
 
     if kind == "quantitative":
         summary = {
-            "σpt": res.get("sigma_pt"),
-            "Moyenne générale x̿": res.get("hom", {}).get("xbar2"),
-            "Sr": res.get("hom", {}).get("sr"),
-            "Ss": res.get("hom", {}).get("ss"),
-            "F1": res.get("hom", {}).get("f1"),
-            "F2": res.get("hom", {}).get("f2"),
-            "Conclusion": (res.get("conclusion") or {}).get("text"),
+            "σpt": (res or {}).get("sigma_pt"),
+            "Moyenne générale x̿": hom_stats.get("xbar2"),
+            "Sr": hom_stats.get("sr"),
+            "Ss": hom_stats.get("ss"),
+            "F1": hom_stats.get("f1"),
+            "F2": hom_stats.get("f2"),
+            "Conclusion": conclusion_text,
         }
         for key, value in summary.items():
             ws.append([key, value])
         ws.append([])
         ws.append(["Homogénéité — résultats"])
         ws.append(["Échantillon", "Résultat 1", "Résultat 2"])
-        for i, row_values in enumerate(inputs["hom"]["rows"]):
+        for i, row_values in enumerate((inputs or {}).get("hom", {}).get("rows", [])):
             if any(v is not None for v in row_values):
                 ws.append([f"HO {i + 1:03d}", row_values[0] if len(row_values) > 0 else "", row_values[1] if len(row_values) > 1 else ""])
         ws.append([])
         ws.append(["Stabilité — fin de l’essai d’aptitude"])
         ws.append(["Échantillon", "Résultat 1", "Résultat 2"])
-        for i, row_values in enumerate(inputs["stab_end"]["rows"]):
+        for i, row_values in enumerate((inputs or {}).get("stab_end", {}).get("rows", [])):
             if any(v is not None for v in row_values):
                 ws.append([f"Stab {i + 1}", row_values[0] if len(row_values) > 0 else "", row_values[1] if len(row_values) > 1 else ""])
     elif kind == "ordinal":
         summary = {
             "Base": inputs.get("basis"),
             "Tolérance": inputs.get("tolerance"),
-            "Valeur de référence": res.get("reference"),
-            "Décision homogénéité": (res.get("hom") or {}).get("text"),
-            "Décision stabilité": (res.get("stab_end") or {}).get("text"),
-            "Conclusion": (res.get("conclusion") or {}).get("text"),
+            "Valeur de référence": (res or {}).get("reference"),
+            "Décision homogénéité": (res.get("hom") or {}).get("text") if isinstance(res, dict) else None,
+            "Décision stabilité": (res.get("stab_end") or {}).get("text") if isinstance(res, dict) else None,
+            "Conclusion": conclusion_text,
         }
         for key, value in summary.items():
             ws.append([key, value])
         ws.append([])
         ws.append(["Homogénéité — résultats"])
         ws.append(["Échantillon", "Résultat 1", "Résultat 2"])
-        for i, row_values in enumerate(inputs["hom"]["rows"]):
+        for i, row_values in enumerate((inputs or {}).get("hom", {}).get("rows", [])):
             if any(v is not None for v in row_values):
                 ws.append([f"HO {i + 1:03d}", row_values[0] if len(row_values) > 0 else "", row_values[1] if len(row_values) > 1 else ""])
         ws.append([])
         ws.append(["Stabilité — fin de l’essai d’aptitude"])
         ws.append(["Échantillon", "Résultat 1", "Résultat 2"])
-        for i, row_values in enumerate(inputs["stab_end"]["rows"]):
+        for i, row_values in enumerate((inputs or {}).get("stab_end", {}).get("rows", [])):
             if any(v is not None for v in row_values):
                 ws.append([f"Stab {i + 1}", row_values[0] if len(row_values) > 0 else "", row_values[1] if len(row_values) > 1 else ""])
     else:
         summary = {
             "Base": inputs.get("basis"),
             "Tolérance": inputs.get("tolerance"),
-            "Conclusion": (res.get("conclusion") or {}).get("text"),
+            "Conclusion": conclusion_text,
         }
         for key, value in summary.items():
             ws.append([key, value])
         ws.append([])
         ws.append(["Paramètres", "Décision homogénéité", "Décision stabilité", "Texte"])
-        for item in res.get("params") or []:
+        for item in (res or {}).get("params") or []:
             if not item:
                 continue
             ws.append([item.get("name"), (item.get("hom") or {}).get("text"), (item.get("stability") or {}).get("text"), item.get("text")])
