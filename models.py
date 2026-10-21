@@ -129,6 +129,8 @@ class Campaign(db.Model):
     start_date = db.Column(db.Date)
     end_date = db.Column(db.Date)
     report_published = db.Column(db.Boolean, default=False)
+    draft_report_path = db.Column(db.String(255), nullable=True)
+    final_report_path = db.Column(db.String(255), nullable=True)
     sheet_config = db.Column(db.Text, nullable=True)  # JSON : structure de la feuille de saisie (voir blueprints/sheets.py)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

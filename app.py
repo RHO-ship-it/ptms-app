@@ -25,6 +25,8 @@ def create_app(config_class=Config):
         _insp = _sa_inspect(db.engine)
         for _table, _col, _ddl in (("portal_documents", "year", "INTEGER"),
                                    ("campaigns", "sheet_config", "TEXT"),
+                                   ("campaigns", "draft_report_path", "VARCHAR(255)"),
+                                   ("campaigns", "final_report_path", "VARCHAR(255)"),
                                    ("trials", "sheet_key", "VARCHAR(40)"),
                                    ("trials", "scale", "TEXT"),
                                    ("submissions", "extra_data", "TEXT")):
