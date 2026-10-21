@@ -14,6 +14,7 @@
     <!-- Bootstrap & Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/ptms-logo.svg') }}?v=5">
 
     <style>
         /* ============================
@@ -85,37 +86,31 @@
         }
 
         .ptms-brand-logo {
-            width: 36px; height: 36px;
-            background: linear-gradient(135deg, var(--ptms-primary), var(--ptms-accent));
-            border-radius: 9px;
+            width: 560px;
+            height: 70px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
-            font-size: 18px;
-            font-weight: 800;
-            box-shadow: 0 2px 8px rgba(10,79,166,.3);
+            overflow: hidden;
+            flex-shrink: 0;
+            background: transparent;
+            transition: transform 0.2s ease;
+        }
+
+        .ptms-brand-logo:hover {
+            transform: scale(1.02);
+        }
+
+        .ptms-brand-logo img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+            filter: drop-shadow(0 2px 4px rgba(10,79,166,.12));
         }
 
         .ptms-brand-text {
-            display: flex;
-            flex-direction: column;
-            line-height: 1.1;
-        }
-
-        .ptms-brand-name {
-            font-size: 16px;
-            font-weight: 800;
-            color: var(--ptms-primary);
-            letter-spacing: -0.3px;
-        }
-
-        .ptms-brand-sub {
-            font-size: 10px;
-            color: var(--ptms-muted);
-            font-weight: 500;
-            letter-spacing: 0.3px;
-            text-transform: uppercase;
+            display: none;
         }
 
         .ptms-topnav-divider {
@@ -817,10 +812,8 @@
 <!-- ===== TOP NAVIGATION ===== -->
 <nav class="ptms-topnav">
     <a class="ptms-brand" href="{{ url_for('dashboard.index') }}">
-        <div class="ptms-brand-logo">P</div>
-        <div class="ptms-brand-text">
-            <span class="ptms-brand-name">PTMS</span>
-            <span class="ptms-brand-sub">ISO/IEC 17043</span>
+        <div class="ptms-brand-logo">
+            <img src="{{ url_for('static', filename='images/ptms-logo.svg') }}?v=12" alt="PTTS">
         </div>
     </a>
 
