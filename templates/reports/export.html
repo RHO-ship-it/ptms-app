@@ -28,6 +28,10 @@
   .report-badge.status-published { background:#dbeafe; color:#1d4ed8; }
   .report-actions { display:flex; flex-wrap:wrap; gap:.5rem; }
   .report-actions .btn { white-space:nowrap; }
+  .report-doc-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:1rem; }
+  .report-doc-card { border:1px solid #e2e8f0; border-radius:14px; background:#f8fafc; padding:1rem; }
+  .report-doc-card .doc-name { font-size:.8rem; font-weight:600; color:#334155; word-break:break-word; }
+  .report-doc-card .doc-empty { color:#64748b; font-size:.8rem; }
   @media (max-width: 768px) {
     .report-actions { flex-direction:column; align-items:stretch; }
     .report-actions .btn { width:100%; justify-content:center; }
@@ -70,6 +74,65 @@
       <div class="card-body">
         <div class="report-kpi-label">Rapports publiés</div>
         <div class="report-kpi-value text-info">{{ summary.published }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="report-panel">
+    <div class="panel-head">
+      <h5 class="mb-0"><i class="bi bi-file-earmark-arrow-up me-2"></i>Mises à jour des rapports par campagne</h5>
+    </div>
+    <div class="panel-body">
+      <div class="row g-3">
+        {% for c in campaigns %}
+        <div class="col-12 col-xl-6 report-filter-row" data-campaign="{{ c.reference }}">
+          <div class="report-doc-card h-100">
+            <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+              <div>
+                <div class="small text-uppercase text-muted fw-bold mb-1">{{ c.reference }}</div>
+                <div class="fw-semibold">{{ c.name }}</div>
+              </div>
+              <span class="report-badge {% if c.status == 'active' %}status-active{% elif c.status == 'closed' %}status-closed{% elif c.status == 'draft' %}status-draft{% else %}status-published{% endif %}">
+                {{ 'Active' if c.status == 'active' else ('Clôturée' if c.status == 'closed' else ('Brouillon' if c.status == 'draft' else 'Archivée')) }}
+              </span>
+            </div>
+            <div class="report-doc-grid">
+              <div>
+                <div class="small text-muted mb-2"><i class="bi bi-pencil-square me-1"></i>Dernière version draft</div>
+                {% if c.draft_report_path %}
+                  <div class="doc-name mb-2">{{ c.draft_report_path.split('/')[-1] }}</div>
+                  <a href="{{ url_for('campaigns.download_report_document', campaign_id=c.id, kind='draft') }}" class="btn btn-sm btn-outline-secondary mb-2"><i class="bi bi-download"></i> Télécharger</a>
+                {% else %}
+                  <div class="doc-empty mb-2">Aucun fichier importé.</div>
+                {% endif %}
+                {% if current_user.role in ['admin', 'chef_technique'] %}
+                <form method="POST" action="{{ url_for('campaigns.upload_report_document', campaign_id=c.id, kind='draft') }}" enctype="multipart/form-data">
+                  <input type="file" name="report_file" class="form-control form-control-sm mb-2" accept=".doc,.docx,.pdf,.xlsx,.xls" required>
+                  <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-upload"></i> Importer</button>
+                </form>
+                {% endif %}
+              </div>
+              <div>
+                <div class="small text-muted mb-2"><i class="bi bi-check2-circle me-1"></i>Dernière version final</div>
+                {% if c.final_report_path %}
+                  <div class="doc-name mb-2">{{ c.final_report_path.split('/')[-1] }}</div>
+                  <a href="{{ url_for('campaigns.download_report_document', campaign_id=c.id, kind='final') }}" class="btn btn-sm btn-outline-secondary mb-2"><i class="bi bi-download"></i> Télécharger</a>
+                {% else %}
+                  <div class="doc-empty mb-2">Aucun fichier importé.</div>
+                {% endif %}
+                {% if current_user.role in ['admin', 'chef_technique'] %}
+                <form method="POST" action="{{ url_for('campaigns.upload_report_document', campaign_id=c.id, kind='final') }}" enctype="multipart/form-data">
+                  <input type="file" name="report_file" class="form-control form-control-sm mb-2" accept=".doc,.docx,.pdf,.xlsx,.xls" required>
+                  <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-upload"></i> Importer</button>
+                </form>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="col-12"><div class="text-center text-muted py-4">Aucune campagne disponible.</div></div>
+        {% endfor %}
       </div>
     </div>
   </div>
