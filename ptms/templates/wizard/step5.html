@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Wizard - Étape 5{% endblock %}
+{% block content %}
+{% include "wizard/_progress.html" %}
+<h4 class="mb-3">Étape 5 / 5 — Récapitulatif et finalisation</h4>
+
+<div class="card card-kpi p-4 mb-3">
+    <h6>Campagne</h6>
+    <p><strong>{{ data.reference }}</strong> — {{ data.name }}<br>
+    <span class="text-muted">{{ data.get('start_date','-') }} → {{ data.get('end_date','-') }}</span></p>
+
+    <h6>Essais ({{ data.trials|length }})</h6>
+    <ul>
+    {% for t in data.trials %}
+        <li>{{ t.name }} ({{ t.parameter }}, {{ t.unit }})</li>
+    {% endfor %}
+    </ul>
+
+    <h6>Laboratoires ({{ labs|length }})</h6>
+    <ul>
+    {% for lab in labs %}
+        <li>{{ lab.code }} — {{ lab.name }}</li>
+    {% endfor %}
+    </ul>
+
+    <div class="alert alert-info">
+        En validant, le système va : créer la campagne, créer les essais, rattacher les laboratoires,
+        générer automatiquement les formulaires (essai × laboratoire), et créer un compte participant
+        pour chaque nouveau laboratoire.
+    </div>
+</div>
+
+<form method="POST">
+    <a href="{{ url_for('wizard.step4') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Précédent</a>
+    <button type="submit" class="btn btn-success"><i class="bi bi-check-circle"></i> Valider et créer la campagne</button>
+</form>
+{% endblock %}

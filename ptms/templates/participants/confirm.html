@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Confirmer ma soumission{% endblock %}
+{% block content %}
+<h3 class="mb-4"><i class="bi bi-patch-check"></i> Confirmer ma soumission — {{ form.trial.name }}</h3>
+
+{% set sub = form.submission %}
+<div class="alert alert-info">
+    Merci de vérifier attentivement les informations ci-dessous avant de confirmer. Une fois confirmée,
+    votre soumission est considérée comme finalisée pour cet essai
+    (une modification restera possible depuis « Mes formulaires » tant que la campagne est active).
+</div>
+
+<div class="card card-kpi p-4 mb-3" style="max-width:700px;">
+    <table class="table table-sm mb-0">
+        <tr><th style="width:260px;">Campagne</th><td>{{ form.trial.campaign.reference }} — {{ form.trial.campaign.name }}</td></tr>
+        <tr><th>Essai</th><td>{{ form.trial.name }} ({{ form.trial.type_label() }})</td></tr>
+        <tr><th>Résultat soumis</th><td><strong>{{ sub.qualitative_result if sub.qualitative_result else sub.value }}</strong></td></tr>
+        {% if sub.replicate_2 is not none %}
+        <tr><th>Réplicat 2</th><td>{{ sub.replicate_2 }}</td></tr>
+        {% endif %}
+        <tr><th>Date de réception de l'échantillon</th><td>{{ sub.sample_reception_date.strftime('%d/%m/%Y') if sub.sample_reception_date else '-' }}</td></tr>
+        <tr><th>Date de l'essai</th><td>{{ sub.test_date.strftime('%d/%m/%Y') if sub.test_date else '-' }}</td></tr>
+        <tr><th>Méthode</th><td>{{ sub.method_used or '-' }}</td></tr>
+        <tr><th>Pièce jointe</th><td>
+            {% if sub.attachment_filename %}
+                <a href="{{ url_for('participants.download_attachment', form_id=form.id) }}">{{ sub.attachment_filename }}</a>
+            {% else %}-{% endif %}
+        </td></tr>
+        <tr><th>Commentaires</th><td>{{ sub.comments or '-' }}</td></tr>
+    </table>
+</div>
+
+<div class="d-flex gap-2">
+    <a href="{{ url_for('participants.submit_form', form_id=form.id) }}" class="btn btn-outline-secondary">
+        <i class="bi bi-pencil"></i> Modifier avant de confirmer
+    </a>
+    <form method="POST">
+        <button type="submit" class="btn btn-success">
+            <i class="bi bi-check2-circle"></i> Confirmer ma soumission
+        </button>
+    </form>
+    <a href="{{ url_for('participants.submission_summary_pdf', form_id=form.id) }}" class="btn btn-outline-primary">
+        <i class="bi bi-file-earmark-pdf"></i> Télécharger le récapitulatif PDF
+    </a>
+</div>
+{% endblock %}

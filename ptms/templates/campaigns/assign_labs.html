@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+{% block title %}Participations — {{ campaign.reference }}{% endblock %}
+
+{% block extra_style %}
+.al-lab-card {
+    background: #fff;
+    border: 2px solid var(--ptms-border);
+    border-radius: 14px;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+    transition: border-color .2s, box-shadow .2s;
+}
+.al-lab-card:hover {
+    border-color: var(--ptms-primary);
+    box-shadow: 0 4px 20px rgba(10,79,166,.08);
+}
+.al-lab-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.al-lab-name {
+    display: flex; align-items: center; gap: 10px;
+}
+.al-lab-code {
+    background: var(--ptms-primary);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    letter-spacing: .5px;
+}
+.al-lab-fullname {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ptms-dark);
+}
+.al-trials-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.al-trial-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #F8FAFC;
+    border: 1.5px solid var(--ptms-border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: all .18s;
+    user-select: none;
+}
+.al-trial-check:hover {
+    background: var(--ptms-primary-light);
+    border-color: var(--ptms-primary);
+}
+.al-trial-check input[type="checkbox"] {
+    width: 16px; height: 16px; accent-color: var(--ptms-primary);
+    cursor: pointer;
+}
+.al-trial-check.checked {
+    background: #E8F0FB;
+    border-color: var(--ptms-primary);
+}
+.al-trial-name-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ptms-dark);
+}
+.al-trial-type-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 10px;
+}
+.al-empty-trials {
+    font-size: 13px;
+    color: var(--ptms-muted);
+    font-style: italic;
+    padding: 8px 0;
+}
+.al-remove-btn {
+    background: #FEE2E2;
+    color: #DC2626;
+    border: none;
+    border-radius: 8px;
+    padding: 5px 11px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .18s;
+    display: flex; align-items: center; gap: 5px;
+}
+.al-remove-btn:hover { background: #FCA5A5; }
+.al-add-section {
+    background: #F8FAFC;
+    border: 2px dashed var(--ptms-border);
+    border-radius: 14px;
+    padding: 22px;
+    text-align: center;
+    margin-bottom: 20px;
+}
+.al-warning-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #FEF3C7; color: #92400E;
+    border-radius: 8px; padding: 4px 10px;
+    font-size: 12px; font-weight: 600; margin-left: 8px;
+}
+{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<div class="ptms-breadcrumb">
+    <a href="{{ url_for('dashboard.index') }}"><i class="bi bi-grid-1x2 me-1"></i>Accueil</a>
+    <span class="ptms-breadcrumb-sep">/</span>
+    <a href="{{ url_for('campaigns.list_campaigns') }}">Campagnes</a>
+    <span class="ptms-breadcrumb-sep">/</span>
+    <a href="{{ url_for('campaigns.view_campaign', campaign_id=campaign.id) }}">{{ campaign.reference }}</a>
+    <span class="ptms-breadcrumb-sep">/</span>
+    <span>Gérer les participations</span>
+</div>
+
+<div class="ptms-page-header mb-4">
+    <div>
+        <div class="ptms-page-title">Participations aux essais</div>
+        <div class="ptms-page-subtitle text-muted">
+            <strong class="text-primary">{{ campaign.reference }}</strong> — Sélectionnez quels essais chaque laboratoire doit réaliser.
+        </div>
+    </div>
+    <a href="{{ url_for('campaigns.view_campaign', campaign_id=campaign.id) }}" class="ptms-btn ptms-btn-ghost ptms-btn-sm">
+        <i class="bi bi-arrow-left"></i> Retour à la campagne
+    </a>
+</div>
+
+{% if not campaign.trials %}
+<div class="ptms-card">
+    <div class="ptms-card-body text-center py-5 text-muted">
+        <i class="bi bi-flask" style="font-size:40px; opacity:.3; display:block; margin-bottom:10px;"></i>
+        Aucun essai configuré. <a href="{{ url_for('trials.new_trial', campaign_id=campaign.id) }}">Ajoutez d'abord des essais</a> à cette campagne.
+    </div>
+</div>
+{% else %}
+
+<!-- Add lab section -->
+{% if unassigned_labs %}
+<div class="al-add-section mb-4">
+    <p class="text-muted mb-3" style="font-size:13.5px;"><i class="bi bi-plus-circle me-2 text-primary"></i>Ajouter un laboratoire à cette campagne</p>
+    <form method="POST" class="d-flex align-items-center justify-content-center gap-3 flex-wrap">
+        <input type="hidden" name="action" value="add_lab">
+        <select name="lab_id" class="ptms-input" style="max-width:320px;" required>
+            <option value="">— Sélectionner un laboratoire —</option>
+            {% for lab in unassigned_labs %}
+            <option value="{{ lab.id }}">{{ lab.code }} — {{ lab.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="ptms-btn ptms-btn-primary ptms-btn-sm">
+            <i class="bi bi-plus-lg"></i> Ajouter
+        </button>
+    </form>
+</div>
+{% endif %}
+
+{% if campaign.laboratories %}
+
+{# Mini-forms for removing labs — placed BEFORE main form but outside it #}
+{% for cl in campaign.laboratories %}
+{% set lab = cl.laboratory %}
+<form method="POST"
+      id="remove-form-{{ lab.id }}"
+      onsubmit="return confirm('Retirer {{ lab.code }} de cette campagne ? Les formulaires non soumis seront supprimés.');">
+    <input type="hidden" name="action" value="remove_lab">
+    <input type="hidden" name="lab_id" value="{{ lab.id }}">
+</form>
+{% endfor %}
+
+<form method="POST" id="assign-form">
+    <input type="hidden" name="action" value="save_trials">
+
+    {% for cl in campaign.laboratories %}
+    {% set lab = cl.laboratory %}
+    {% set assigned_trials = assignment_map.get(lab.id, []) %}
+    <div class="al-lab-card">
+        <div class="al-lab-header">
+            <div class="al-lab-name">
+                <span class="al-lab-code">{{ lab.code }}</span>
+                <span class="al-lab-fullname">{{ lab.name }}</span>
+                {% set n_assigned = assigned_trials | length %}
+                {% if n_assigned > 0 %}
+                <span class="ptms-badge" style="background:#D1FAE5; color:#065F46;">
+                    <i class="bi bi-check-circle-fill me-1"></i>{{ n_assigned }} essai{{ 's' if n_assigned > 1 }}
+                </span>
+                {% else %}
+                <span class="al-warning-badge"><i class="bi bi-exclamation-triangle-fill"></i>Aucun essai sélectionné</span>
+                {% endif %}
+            </div>
+            {# Button linked to the external mini-form via form= attribute #}
+            <button type="submit"
+                    form="remove-form-{{ lab.id }}"
+                    class="al-remove-btn">
+                <i class="bi bi-x-lg"></i> Retirer
+            </button>
+        </div>
+
+        <div class="al-trials-grid" id="grid-{{ lab.id }}">
+            {% for trial in campaign.trials %}
+            {% set is_checked = trial.id in assigned_trials %}
+            <label class="al-trial-check {{ 'checked' if is_checked }}" id="label-{{ lab.id }}-{{ trial.id }}">
+                <input type="checkbox"
+                       name="trials_{{ lab.id }}"
+                       value="{{ trial.id }}"
+                       {{ 'checked' if is_checked }}
+                       onchange="toggleChecked(this, 'label-{{ lab.id }}-{{ trial.id }}', {{ lab.id }})">
+                {% set tcolors = {'quantitative': ('#E8F0FB','#0A4FA6'), 'qualitative': ('#EDE9FE','#6366F1'), 'solidite': ('#FEF3C7','#92400E')} %}
+                {% set tc = tcolors.get(trial.trial_type, ('#F3F4F6','#374151')) %}
+                <span class="al-trial-type-badge" style="background:{{ tc[0] }}; color:{{ tc[1] }};">
+                    {{ 'Quant.' if trial.trial_type=='quantitative' else ('Qual.' if trial.trial_type=='qualitative' else 'Sol.') }}
+                </span>
+                <span class="al-trial-name-label">{{ trial.name }}</span>
+                {% if trial.parameter %}
+                <span class="text-muted" style="font-size:11.5px;">· {{ trial.parameter }}{% if trial.unit %} ({{ trial.unit }}){% endif %}</span>
+                {% endif %}
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+
+    <div class="d-flex justify-content-end gap-3 mt-3">
+        <a href="{{ url_for('campaigns.view_campaign', campaign_id=campaign.id) }}" class="ptms-btn ptms-btn-ghost">
+            <i class="bi bi-x-lg"></i> Annuler
+        </a>
+        <button type="submit" class="ptms-btn ptms-btn-primary">
+            <i class="bi bi-check-lg"></i> Enregistrer les participations
+        </button>
+    </div>
+</form>
+
+{% else %}
+<div class="ptms-card">
+    <div class="ptms-card-body text-center py-5 text-muted">
+        <i class="bi bi-building" style="font-size:40px; opacity:.3; display:block; margin-bottom:10px;"></i>
+        Aucun laboratoire dans cette campagne. Ajoutez-en un ci-dessus.
+    </div>
+</div>
+{% endif %}
+
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function toggleChecked(checkbox, labelId, labId) {
+    const label = document.getElementById(labelId);
+    if (checkbox.checked) {
+        label.classList.add('checked');
+    } else {
+        label.classList.remove('checked');
+    }
+    updateCount(labId);
+}
+
+function updateCount(labId) {
+    const grid = document.getElementById('grid-' + labId);
+    if (!grid) return;
+    const checked = grid.querySelectorAll('input[type="checkbox"]:checked').length;
+    // Update the badge in the header for this lab card
+    const card = grid.closest('.al-lab-card');
+    const badgeArea = card.querySelector('.ptms-badge, .al-warning-badge');
+    if (checked > 0) {
+        if (badgeArea) {
+            badgeArea.className = 'ptms-badge';
+            badgeArea.style.background = '#D1FAE5';
+            badgeArea.style.color = '#065F46';
+            badgeArea.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>' + checked + ' essai' + (checked > 1 ? 's' : '');
+        }
+    } else {
+        if (badgeArea) {
+            badgeArea.className = 'al-warning-badge';
+            badgeArea.style.background = '';
+            badgeArea.style.color = '';
+            badgeArea.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> Aucun essai sélectionné';
+        }
+    }
+}
+</script>
+{% endblock %}

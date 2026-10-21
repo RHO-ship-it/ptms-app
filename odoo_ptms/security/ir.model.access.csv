@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_ptms_campaign_admin,ptms.campaign.admin,model_ptms_campaign,group_ptms_admin,1,1,1,1
+access_ptms_campaign_participant,ptms.campaign.participant,model_ptms_campaign,group_ptms_participant,1,0,0,0
+access_ptms_trial_admin,ptms.trial.admin,model_ptms_trial,group_ptms_admin,1,1,1,1
+access_ptms_trial_participant,ptms.trial.participant,model_ptms_trial,group_ptms_participant,1,0,0,0
+access_ptms_result_admin,ptms.result.admin,model_ptms_result,group_ptms_admin,1,1,1,1
+access_ptms_result_participant,ptms.result.participant,model_ptms_result,group_ptms_participant,1,1,1,0

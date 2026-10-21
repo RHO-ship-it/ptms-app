@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="action_report_ptms_campaign" model="ir.actions.report">
+            <field name="name">Rapport de Campagne PTMS</field>
+            <field name="model">ptms.campaign</field>
+            <field name="report_type">qweb-pdf</field>
+            <field name="report_name">odoo_ptms.report_ptms_campaign</field>
+            <field name="report_file">odoo_ptms.report_ptms_campaign</field>
+            <field name="print_report_name">'Rapport_Campagne_%s' % (object.reference)</field>
+            <field name="binding_model_id" ref="model_ptms_campaign"/>
+            <field name="binding_type">report</field>
+        </record>
+
+        <template id="report_ptms_campaign">
+            <t t-call="web.html_container">
+                <t t-foreach="docs" t-as="doc">
+                    <t t-call="web.external_layout">
+                        <div class="page">
+                            <h2 class="text-center mb-4">Rapport d'Essais d'Aptitude (ISO 17043)</h2>
+                            
+                            <div class="row mb-4">
+                                <div class="col-6">
+                                    <strong>Campagne :</strong> <span t-field="doc.name"/><br/>
+                                    <strong>Référence :</strong> <span t-field="doc.reference"/><br/>
+                                </div>
+                                <div class="col-6 text-end">
+                                    <strong>Période :</strong> <span t-field="doc.date_start"/> au <span t-field="doc.date_end"/><br/>
+                                </div>
+                            </div>
+                            
+                            <div t-if="doc.description" class="mb-4">
+                                <strong>Description :</strong>
+                                <div t-field="doc.description"/>
+                            </div>
+
+                            <t t-foreach="doc.trial_ids" t-as="trial">
+                                <h3 class="mt-4"><span t-field="trial.name"/> (<span t-field="trial.parameter"/>)</h3>
+                                
+                                <div class="row mb-3 bg-light p-2">
+                                    <div class="col-6">
+                                        <strong>Valeur Assignée (X) :</strong> <span t-field="trial.assigned_value"/> <span t-field="trial.unit"/>
+                                    </div>
+                                    <div class="col-6">
+                                        <strong>Écart-type (σ) :</strong> <span t-field="trial.standard_deviation"/> <span t-field="trial.unit"/>
+                                    </div>
+                                </div>
+
+                                <table class="table table-sm table-bordered">
+                                    <thead>
+                                        <tr class="table-active">
+                                            <th>Code Labo</th>
+                                            <th>Valeur</th>
+                                            <th>Méthode</th>
+                                            <th>Z-Score</th>
+                                            <th>Évaluation</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr t-foreach="trial.result_ids.filtered(lambda r: r.value_submitted)" t-as="res">
+                                            <td><span t-field="res.partner_id.lab_code"/></td>
+                                            <td><span t-field="res.value_submitted"/></td>
+                                            <td><span t-field="res.method_used"/></td>
+                                            <td><span t-field="res.z_score"/></td>
+                                            <td>
+                                                <span t-if="res.evaluation == 'satisfactory'">Satisfaisant</span>
+                                                <span t-if="res.evaluation == 'questionable'">Discutable</span>
+                                                <span t-if="res.evaluation == 'unsatisfactory'">Non Satisfaisant</span>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </t>
+                        </div>
+                    </t>
+                </t>
+            </t>
+        </template>
+    </data>
+</odoo>

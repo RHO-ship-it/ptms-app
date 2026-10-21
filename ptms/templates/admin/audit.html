@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Audit Trail{% endblock %}
+{% block content %}
+<h3 class="mb-4"><i class="bi bi-journal-text"></i> Audit Trail</h3>
+
+<div class="card card-kpi p-3 mb-3">
+    <form class="row g-2">
+        <div class="col-md-3">
+            <select name="action" class="form-select" onchange="this.form.submit()">
+                <option value="">Toutes les actions</option>
+                {% for a in actions %}
+                <option value="{{ a }}" {{ 'selected' if action_filter==a }}>{{ a }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+</div>
+
+<div class="card card-kpi p-3">
+    <table class="table table-sm table-hover">
+        <thead><tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Entité</th><th>Détails</th></tr></thead>
+        <tbody>
+        {% for log in logs %}
+            <tr>
+                <td>{{ log.timestamp.strftime('%d/%m/%Y %H:%M:%S') }}</td>
+                <td>{{ log.user.username if log.user else 'Système' }}</td>
+                <td><span class="badge bg-secondary">{{ log.action }}</span></td>
+                <td>{{ log.entity_type }}{% if log.entity_id %} #{{ log.entity_id }}{% endif %}</td>
+                <td class="small text-muted">{{ log.details }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="5" class="text-center text-muted">Aucune entrée d'audit.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

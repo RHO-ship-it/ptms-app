@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Form View -->
+        <record id="view_ptms_trial_form" model="ir.ui.view">
+            <field name="name">ptms.trial.form</field>
+            <field name="model">ptms.trial</field>
+            <field name="arch" type="xml">
+                <form string="Essai PTMS">
+                    <header>
+                        <button name="action_calculate_statistics" type="object" string="Calculer Statistiques" class="oe_highlight"/>
+                    </header>
+                    <sheet>
+                        <div class="oe_title">
+                            <h1>
+                                <field name="name" placeholder="Nom de l'Essai"/>
+                            </h1>
+                        </div>
+                        <group>
+                            <group>
+                                <field name="campaign_id"/>
+                                <field name="parameter"/>
+                                <field name="unit"/>
+                            </group>
+                            <group string="Statistiques Calculées">
+                                <field name="assigned_value"/>
+                                <field name="standard_deviation"/>
+                            </group>
+                        </group>
+                        <notebook>
+                            <page string="Résultats des Participants" name="results">
+                                <field name="result_ids">
+                                    <tree string="Résultats" editable="bottom">
+                                        <field name="partner_id"/>
+                                        <field name="value_submitted"/>
+                                        <field name="z_score"/>
+                                        <field name="is_outlier"/>
+                                        <field name="evaluation" widget="badge" 
+                                               decoration-success="evaluation == 'satisfactory'" 
+                                               decoration-warning="evaluation == 'questionable'" 
+                                               decoration-danger="evaluation == 'unsatisfactory'"/>
+                                    </tree>
+                                </field>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Action -->
+        <record id="action_ptms_trial" model="ir.actions.act_window">
+            <field name="name">Essais</field>
+            <field name="res_model">ptms.trial</field>
+            <field name="view_mode">tree,form</field>
+        </record>
+    </data>
+</odoo>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="module_category_ptms" model="ir.module.category">
+            <field name="name">PTMS</field>
+            <field name="description">Gestion des droits pour Proficiency Testing Management System</field>
+            <field name="sequence">20</field>
+        </record>
+
+        <record id="group_ptms_participant" model="res.groups">
+            <field name="name">Participant (Laboratoire)</field>
+            <field name="category_id" ref="module_category_ptms"/>
+            <field name="implied_ids" eval="[(4, ref('base.group_portal'))]"/>
+        </record>
+
+        <record id="group_ptms_admin" model="res.groups">
+            <field name="name">Administrateur PTMS</field>
+            <field name="category_id" ref="module_category_ptms"/>
+            <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+        </record>
+    </data>
+</odoo>

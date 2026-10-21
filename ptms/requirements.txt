@@ -1,0 +1,11 @@
+Flask==3.0.3
+Flask-SQLAlchemy==3.1.1
+Flask-Login==0.6.3
+Werkzeug==3.0.3
+openpyxl==3.1.5
+reportlab==4.2.2
+python-docx==1.1.2
+waitress==3.0.0
+pyngrok==7.1.6
+gunicorn==22.0.0
+

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Modifier' if user else 'Nouvel' }} utilisateur{% endblock %}
+{% block content %}
+<h3 class="mb-4"><i class="bi bi-person-plus"></i> {{ 'Modifier l\'utilisateur' if user else 'Nouvel utilisateur' }}</h3>
+<div class="card card-kpi p-4" style="max-width:600px;">
+    <form method="POST">
+        <div class="mb-3">
+            <label class="form-label">Nom d'utilisateur</label>
+            {% if user %}
+                <input type="text" class="form-control" value="{{ user.username }}" disabled>
+            {% else %}
+                <input type="text" class="form-control" name="username" required>
+            {% endif %}
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Nom complet</label>
+            <input type="text" class="form-control" name="full_name" value="{{ user.full_name if user else '' }}" required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-control" name="email" value="{{ user.email if user else '' }}" required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Rôle</label>
+            <select class="form-select" name="role">
+                {% for r in roles %}
+                <option value="{{ r }}" {{ 'selected' if user and user.role==r }}>{{ r }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Laboratoire (si participant)</label>
+            <select class="form-select" name="laboratory_id">
+                <option value="">-- Aucun --</option>
+                {% for lab in labs %}
+                <option value="{{ lab.id }}" {{ 'selected' if user and user.laboratory_id==lab.id }}>{{ lab.code }} — {{ lab.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Mot de passe {{ '(laisser vide pour ne pas changer)' if user else '' }}</label>
+            <input type="password" class="form-control" name="password" {{ 'required' if not user }}>
+        </div>
+        {% if user %}
+        <div class="form-check mb-3">
+            <input type="checkbox" class="form-check-input" name="active" id="active" {{ 'checked' if user.active }}>
+            <label class="form-check-label" for="active">Compte actif</label>
+        </div>
+        {% endif %}
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+        <a href="{{ url_for('admin.list_users') }}" class="btn btn-outline-secondary">Annuler</a>
+    </form>
+</div>
+{% endblock %}

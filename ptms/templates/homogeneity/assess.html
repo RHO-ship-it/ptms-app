@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Homogénéité / Stabilité{% endblock %}
+{% block content %}
+<h3 class="mb-2"><i class="bi bi-shield-check"></i> Homogénéité et stabilité — {{ trial.name }}</h3>
+<p class="text-muted mb-4">
+    ISO 13528, Annexe B. Campagne {{ trial.campaign.reference }} — Paramètre : {{ trial.parameter }}
+    {% if trial.trial_type == 'quantitative' %}({{ trial.unit }}){% endif %}
+    — σpt utilisé : <strong>{{ trial.target_sd if trial.target_sd is not none else 'non défini' }}</strong>
+    ({{ trial.sigma_pt_method_label() }})
+</p>
+
+{% if not trial.target_sd %}
+<div class="alert alert-warning">
+    Aucun σpt (écart-type pour l'évaluation d'aptitude) n'est défini pour cet essai. Renseignez-le sur la fiche
+    de l'essai avant de lancer l'évaluation, sinon les critères de conformité ne pourront pas être calculés.
+</div>
+{% endif %}
+
+{% if assessment and assessment.assessed_at %}
+<div class="alert {{ 'alert-success' if assessment.homogeneity_conform and (assessment.stability_conform is none or assessment.stability_conform) else 'alert-warning' }}">
+    <strong>Dernière évaluation :</strong> {{ assessment.assessed_at.strftime('%d/%m/%Y %H:%M') }} par {{ assessment.assessor.full_name if assessment.assessor else '-' }}<br>
+    Homogénéité :
+    {% if assessment.homogeneity_conform is none %}non calculable
+    {% elif assessment.homogeneity_conform %}<span class="badge bg-success">Conforme</span>
+    {% else %}<span class="badge bg-danger">Non conforme</span>{% endif %}
+    &nbsp;·&nbsp;
+    Stabilité :
+    {% if assessment.stability_conform is none %}non calculable
+    {% elif assessment.stability_conform %}<span class="badge bg-success">Conforme</span>
+    {% else %}<span class="badge bg-danger">Non conforme</span>{% endif %}
+</div>
+{% endif %}
+
+<form method="POST">
+<div class="card card-kpi p-3 mb-3">
+    <h5>1. Homogénéité — échantillons prélevés dans le lot (avant diffusion)</h5>
+    <p class="text-muted small">
+        Saisissez les résultats de 2 réplicats (x1, x2) pour chaque échantillon prélevé au hasard dans le lot
+        (10 échantillons recommandés). Critère utilisé : homogène si s_s ≤ 0,3 × σpt (ISO 13528 §B.2, critère simple et suffisant).
+    </p>
+    <div class="table-scroll">
+    <table class="table table-sm">
+        <thead><tr><th style="width:60px;">N° éch.</th><th>Réplicat x1</th><th>Réplicat x2</th></tr></thead>
+        <tbody>
+        {% for pair in sample_pairs %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td><input type="number" step="any" class="form-control form-control-sm" name="hom_x1_{{ loop.index0 }}" value="{{ pair[0] if pair[0] is not none else '' }}"></td>
+                <td><input type="number" step="any" class="form-control form-control-sm" name="hom_x2_{{ loop.index0 }}" value="{{ pair[1] if pair[1] is not none else '' }}"></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+
+    {% if assessment and assessment.s_within is not none %}
+    <div class="result-line mt-2">
+        <span class="badge bg-light text-dark border me-2">s_w (intra-échantillon) = {{ assessment.s_within }}</span>
+        <span class="badge bg-light text-dark border me-2">s_s (inter-échantillon) = {{ assessment.s_between }}</span>
+        <span class="badge bg-light text-dark border me-2">Critère 0,3·σpt = {{ assessment.homogeneity_criterion if assessment.homogeneity_criterion is not none else '-' }}</span>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card card-kpi p-3 mb-3">
+    <h5>2. Stabilité — comparaison début / fin de tour d'essai</h5>
+    <p class="text-muted small">
+        Résultat de référence mesuré en début et en fin de tour (sur un échantillon conservé dans les conditions
+        de stockage). Critère : stable si |x_fin − x_début| ≤ 0,3 × σpt (ISO 13528 §B.3).
+    </p>
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Valeur de référence — début de tour</label>
+            <input type="number" step="any" class="form-control" name="stability_first_value"
+                   value="{{ assessment.stability_first_value if assessment and assessment.stability_first_value is not none else '' }}">
+        </div>
+        <div class="col-md-6 mb-3">
+            <label class="form-label">Valeur de référence — fin de tour</label>
+            <input type="number" step="any" class="form-control" name="stability_last_value"
+                   value="{{ assessment.stability_last_value if assessment and assessment.stability_last_value is not none else '' }}">
+        </div>
+    </div>
+    {% if assessment and assessment.stability_criterion is not none %}
+    <div class="result-line">
+        <span class="badge bg-light text-dark border me-2">Écart observé = {{ (assessment.stability_last_value - assessment.stability_first_value)|abs if assessment.stability_first_value is not none and assessment.stability_last_value is not none else '-' }}</span>
+        <span class="badge bg-light text-dark border me-2">Critère 0,3·σpt = {{ assessment.stability_criterion }}</span>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card card-kpi p-3 mb-3">
+    <label class="form-label">Notes / commentaires de l'évaluateur</label>
+    <textarea class="form-control" name="notes" rows="3">{{ assessment.notes if assessment else '' }}</textarea>
+</div>
+
+<button type="submit" class="btn btn-primary">Calculer et enregistrer</button>
+<a href="{{ url_for('trials.list_trials', campaign_id=trial.campaign_id) }}" class="btn btn-outline-secondary">Retour aux essais</a>
+</form>
+{% endblock %}

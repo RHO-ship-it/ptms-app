@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Campagnes{% endblock %}
+
+{% block extra_style %}
+.ptms-campaign-card {
+    background: var(--ptms-card);
+    border: 1px solid var(--ptms-border);
+    border-radius: var(--ptms-radius-lg);
+    padding: 18px 22px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: all var(--ptms-transition);
+    text-decoration: none;
+    color: inherit;
+    margin-bottom: 10px;
+}
+.ptms-campaign-card:hover {
+    border-color: var(--ptms-primary);
+    box-shadow: var(--ptms-shadow-md);
+    transform: translateX(3px);
+    color: inherit;
+}
+.ptms-campaign-avatar {
+    width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; color: white; font-weight: 700;
+}
+.ptms-campaign-meta { flex: 1; min-width: 0; }
+.ptms-campaign-name { font-size: 14.5px; font-weight: 700; color: var(--ptms-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ptms-campaign-ref { font-size: 12px; color: var(--ptms-muted); margin-top: 2px; }
+.ptms-campaign-dates { font-size: 12px; color: var(--ptms-muted); display: flex; gap: 14px; margin-top: 6px; flex-wrap: wrap; }
+.ptms-campaign-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+{% endblock %}
+
+{% block content %}
+
+<div class="ptms-page-header">
+    <div>
+        <div class="ptms-breadcrumb">
+            <a href="{{ url_for('dashboard.index') }}"><i class="bi bi-grid-1x2 me-1"></i>Accueil</a>
+            <span class="ptms-breadcrumb-sep">/</span>
+            <span>Campagnes</span>
+        </div>
+        <div class="ptms-page-title"><i class="bi bi-collection me-2 text-primary"></i>Campagnes d'Essais d'Aptitude</div>
+        <div class="ptms-page-subtitle">Gestion des programmes inter-laboratoires ISO/IEC 17043</div>
+    </div>
+    {% if current_user.role in ['admin','chef_technique'] %}
+    <a href="{{ url_for('wizard.start') }}" class="ptms-btn ptms-btn-primary">
+        <i class="bi bi-magic"></i> Nouvelle campagne
+    </a>
+    {% endif %}
+</div>
+
+<!-- Filter bar -->
+<div class="ptms-card mb-4">
+    <div class="ptms-card-body" style="padding: 14px 20px;">
+        <form class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="ptms-label">Filtrer par statut</label>
+                <select name="status" class="form-select" onchange="this.form.submit()">
+                    <option value="">Tous les statuts</option>
+                    <option value="draft"    {{ 'selected' if status=='draft' }}>📝 Brouillon</option>
+                    <option value="active"   {{ 'selected' if status=='active' }}>✅ Active</option>
+                    <option value="closed"   {{ 'selected' if status=='closed' }}>🔒 Clôturée</option>
+                    <option value="archived" {{ 'selected' if status=='archived' }}>📦 Archivée</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <a href="{{ url_for('campaigns.list_campaigns') }}" class="ptms-btn ptms-btn-ghost">
+                    <i class="bi bi-x-circle"></i> Réinitialiser
+                </a>
+            </div>
+            <div class="col-auto ms-auto d-flex align-items-center gap-2">
+                <span class="text-muted" style="font-size:13px;">
+                    <strong>{{ campaigns|length }}</strong> campagne(s) trouvée(s)
+                </span>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Campaign cards list -->
+{% if campaigns %}
+<div>
+    {% for c in campaigns %}
+    {% set status_color = '#10B981' if c.status == 'active' else ('#6366F1' if c.status == 'draft' else ('#EF4444' if c.status == 'closed' else '#6B7280')) %}
+    {% set status_bg = '#D1FAE5' if c.status == 'active' else ('#EDE9FE' if c.status == 'draft' else ('#FEE2E2' if c.status == 'closed' else '#F3F4F6')) %}
+    {% set status_label = 'Active' if c.status == 'active' else ('Brouillon' if c.status == 'draft' else ('Clôturée' if c.status == 'closed' else 'Archivée')) %}
+    {% set status_icon = 'play-circle-fill' if c.status == 'active' else ('pencil-fill' if c.status == 'draft' else ('lock-fill' if c.status == 'closed' else 'archive-fill')) %}
+
+    <div class="ptms-campaign-card">
+        <div class="ptms-campaign-avatar"
+             style="background: linear-gradient(135deg, {{ status_color }}, {{ status_color }}88);">
+            <i class="bi bi-{{ status_icon }}"></i>
+        </div>
+
+        <div class="ptms-campaign-meta">
+            <div class="ptms-campaign-name">{{ c.name }}</div>
+            <div class="ptms-campaign-ref">
+                <span class="fw-semibold text-primary">{{ c.reference }}</span>
+                {% if c.description %}
+                 · <span>{{ c.description[:80] }}{% if c.description|length > 80 %}…{% endif %}</span>
+                {% endif %}
+            </div>
+            <div class="ptms-campaign-dates">
+                {% if c.start_date %}
+                <span><i class="bi bi-calendar-event me-1"></i>Début : {{ c.start_date.strftime('%d/%m/%Y') }}</span>
+                {% endif %}
+                {% if c.end_date %}
+                <span><i class="bi bi-calendar-check me-1"></i>Fin : {{ c.end_date.strftime('%d/%m/%Y') }}</span>
+                {% endif %}
+                <span><i class="bi bi-clock me-1"></i>Créée le {{ c.created_at.strftime('%d/%m/%Y') }}</span>
+            </div>
+        </div>
+
+        <div class="ptms-campaign-right">
+            <span class="ptms-badge" style="background:{{ status_bg }}; color:{{ status_color }};">
+                <i class="bi bi-{{ status_icon }}" style="font-size:10px;"></i>
+                {{ status_label }}
+            </span>
+            <a href="{{ url_for('campaigns.campaign_dashboard', campaign_id=c.id) }}" class="ptms-btn ptms-btn-sm" style="background:#eff6ff; color:#3b82f6; border:1px solid #bfdbfe;">
+                <i class="bi bi-graph-up"></i> TDB
+            </a>
+            <a href="{{ url_for('campaigns.view_campaign', campaign_id=c.id) }}" class="ptms-btn ptms-btn-primary ptms-btn-sm">
+                Ouvrir <i class="bi bi-arrow-right"></i>
+            </a>
+            {% if current_user.role == 'admin' %}
+            <form action="{{ url_for('campaigns.delete_campaign', campaign_id=c.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette campagne ? (Action irréversible : supprime essais et résultats)');">
+                <button type="submit" class="ptms-btn ptms-btn-sm" style="background:#fee2e2; color:#ef4444; border:none; padding:6px 10px;" title="Supprimer">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% else %}
+<div class="ptms-card">
+    <div class="ptms-card-body text-center py-6" style="padding: 60px 20px;">
+        <i class="bi bi-collection" style="font-size: 56px; color: #CBD5E1; display:block; margin-bottom:16px;"></i>
+        <div style="font-size:17px; font-weight:700; color:var(--ptms-dark); margin-bottom:8px;">Aucune campagne trouvée</div>
+        <div class="text-muted mb-4" style="font-size:13.5px;">
+            {% if status %}Aucune campagne avec le statut « {{ status }} ».{% else %}Commencez par créer votre première campagne d'essais d'aptitude.{% endif %}
+        </div>
+        {% if current_user.role in ['admin','chef_technique'] %}
+        <a href="{{ url_for('wizard.start') }}" class="ptms-btn ptms-btn-primary">
+            <i class="bi bi-magic"></i> Créer une campagne (Wizard)
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

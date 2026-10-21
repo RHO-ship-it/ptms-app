@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Wizard - Étape 4{% endblock %}
+{% block content %}
+{% include "wizard/_progress.html" %}
+<h4 class="mb-3">Étape 4 / 5 — Aperçu de la génération des formulaires</h4>
+<p class="text-muted">Un formulaire sera automatiquement généré pour chaque combinaison Essai × Laboratoire.</p>
+
+<div class="card card-kpi p-3 mb-3">
+    <div class="row mb-2">
+        <div class="col-md-4"><strong>{{ data.trials|length }}</strong> essai(s)</div>
+        <div class="col-md-4"><strong>{{ labs|length }}</strong> laboratoire(s)</div>
+        <div class="col-md-4"><strong>{{ forms_preview|length }}</strong> formulaire(s) à générer</div>
+    </div>
+    <table class="table table-sm">
+        <thead><tr><th>Essai</th><th>Laboratoire</th></tr></thead>
+        <tbody>
+        {% for f in forms_preview %}
+            <tr><td>{{ f.trial }}</td><td>{{ f.lab }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<form method="POST">
+    <a href="{{ url_for('wizard.step3') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Précédent</a>
+    <button type="submit" class="btn btn-primary">Suivant <i class="bi bi-arrow-right"></i></button>
+</form>
+{% endblock %}

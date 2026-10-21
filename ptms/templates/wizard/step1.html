@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Wizard — Étape 1 : Informations générales{% endblock %}
+
+{% block content %}
+{% include "wizard/_progress.html" %}
+
+<div class="ptms-page-header">
+    <div>
+        <div class="ptms-breadcrumb">
+            <a href="{{ url_for('dashboard.index') }}"><i class="bi bi-grid-1x2 me-1"></i>Accueil</a>
+            <span class="ptms-breadcrumb-sep">/</span>
+            <a href="{{ url_for('campaigns.list_campaigns') }}">Campagnes</a>
+            <span class="ptms-breadcrumb-sep">/</span>
+            <span>Nouveau Wizard</span>
+        </div>
+        <div class="ptms-page-title"><i class="bi bi-magic me-2 text-primary"></i>Nouvelle campagne — Étape 1 / 5</div>
+        <div class="ptms-page-subtitle">Informations générales de la campagne d'essais d'aptitude</div>
+    </div>
+</div>
+
+<div class="ptms-card" style="max-width:680px;">
+    <div class="ptms-card-header">
+        <i class="bi bi-info-circle-fill text-primary" style="font-size:17px;"></i>
+        <span class="ptms-card-title">Identification de la campagne</span>
+        <span class="ptms-badge ptms-badge-primary">Étape 1/5</span>
+    </div>
+    <div class="ptms-card-body">
+        <form method="POST" id="step1form">
+            <!-- Référence -->
+            <div class="ptms-form-group">
+                <label class="ptms-label" for="reference">
+                    Référence de la campagne <span class="text-danger">*</span>
+                </label>
+                <div class="position-relative">
+                    <input type="text" class="ptms-input" id="reference" name="reference"
+                           value="{{ data.get('reference','') }}"
+                           placeholder="ex: TTS-T2603, PT-2026-001"
+                           required autocomplete="off"
+                           oninput="checkRef(this.value)">
+                    <div id="refStatus" style="font-size:12px; margin-top:5px;"></div>
+                </div>
+                <div class="mt-1" style="font-size:12px; color:var(--ptms-muted);">
+                    <i class="bi bi-info-circle me-1"></i>
+                    La référence doit être unique dans le système. Elle ne peut pas être modifiée après création.
+                </div>
+            </div>
+
+            <!-- Nom -->
+            <div class="ptms-form-group">
+                <label class="ptms-label" for="name">
+                    Nom de la campagne <span class="text-danger">*</span>
+                </label>
+                <input type="text" class="ptms-input" id="name" name="name"
+                       value="{{ data.get('name','') }}"
+                       placeholder="ex: Campagne textile 2026 — Résistance au feu"
+                       required>
+            </div>
+
+            <!-- Description -->
+            <div class="ptms-form-group">
+                <label class="ptms-label" for="description">Description / Objet</label>
+                <textarea class="ptms-input" id="description" name="description"
+                          rows="3" style="resize:vertical;"
+                          placeholder="Décrivez l'objet et le domaine d'application de cette campagne…">{{ data.get('description','') }}</textarea>
+            </div>
+
+            <!-- Dates -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label class="ptms-label" for="start_date">Date de début</label>
+                    <input type="date" class="ptms-input" id="start_date" name="start_date"
+                           value="{{ data.get('start_date','') }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="ptms-label" for="end_date">Date de fin / Échéance</label>
+                    <input type="date" class="ptms-input" id="end_date" name="end_date"
+                           value="{{ data.get('end_date','') }}">
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center">
+                <a href="{{ url_for('campaigns.list_campaigns') }}" class="ptms-btn ptms-btn-ghost">
+                    <i class="bi bi-x-circle"></i> Annuler
+                </a>
+                <button type="submit" class="ptms-btn ptms-btn-primary" id="submitBtn">
+                    Suivant <i class="bi bi-arrow-right"></i>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    let checkTimer = null;
+
+    function checkRef(value) {
+        clearTimeout(checkTimer);
+        const el = document.getElementById('refStatus');
+        const btn = document.getElementById('submitBtn');
+
+        if (!value || value.length < 2) {
+            el.innerHTML = '';
+            btn.disabled = false;
+            return;
+        }
+
+        el.innerHTML = '<span style="color:var(--ptms-muted);"><i class="bi bi-hourglass-split me-1"></i>Vérification...</span>';
+
+        checkTimer = setTimeout(() => {
+            fetch(`/campaigns/check-reference?ref=${encodeURIComponent(value)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.exists) {
+                        el.innerHTML = `<span style="color:#EF4444;"><i class="bi bi-x-circle-fill me-1"></i>
+                            Cette référence est déjà utilisée par <strong>${data.campaign_name}</strong>.
+                            Essayez : <a href="#" onclick="document.getElementById('reference').value='${data.suggestion}';checkRef('${data.suggestion}');return false;"
+                            style="color:#0A4FA6;font-weight:600;">${data.suggestion}</a></span>`;
+                        btn.disabled = true;
+                    } else {
+                        el.innerHTML = `<span style="color:#10B981;"><i class="bi bi-check-circle-fill me-1"></i>Référence disponible.</span>`;
+                        btn.disabled = false;
+                    }
+                })
+                .catch(() => {
+                    el.innerHTML = '';
+                    btn.disabled = false;
+                });
+        }, 400);
+    }
+
+    // Trigger check on page load if value is pre-filled
+    const ref = document.getElementById('reference');
+    if (ref && ref.value) checkRef(ref.value);
+</script>
+{% endblock %}

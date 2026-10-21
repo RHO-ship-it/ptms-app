@@ -1,0 +1,510 @@
+{% extends "base.html" %}
+{% block title %}Suivi des Soumissions & Expéditions Colis{% endblock %}
+
+{% block content %}
+
+<!-- Header & Breadcrumb -->
+<div class="ptms-breadcrumb">
+    <a href="{{ url_for('dashboard.index') }}"><i class="bi bi-grid-1x2 me-1"></i>Accueil</a>
+    <span class="ptms-breadcrumb-sep">/</span>
+    <span>Suivi des Soumissions & Expéditions</span>
+</div>
+
+<div class="ptms-page-header">
+    <div>
+        <div class="ptms-page-title"><i class="bi bi-truck text-primary me-2"></i>Suivi des Soumissions & Expéditions Colis</div>
+        <div class="ptms-page-subtitle">Gestion des numéros de suivi colis, QR Codes échantillons et horodatage de réception en temps réel</div>
+    </div>
+</div>
+
+<div class="ptms-card mb-4">
+    <div class="ptms-card-body p-3">
+        <form class="row g-3 align-items-center">
+            <div class="col-md-6">
+                <label class="ptms-label">SÉLECTIONNER UNE CAMPAGNE</label>
+                <select name="campaign_id" class="ptms-select" onchange="location.href='{{ url_for('participants.tracker') }}/campaign/'+this.value">
+                    {% for c in campaigns %}
+                    <option value="{{ c.id }}" {{ 'selected' if selected_campaign and selected_campaign.id==c.id }}>
+                        {{ c.reference }} — {{ c.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if selected_campaign %}
+{% set nb_total = rows|length %}
+{% set nb_submitted = rows|selectattr('status', 'ne', 'pending')|list|length %}
+{% set nb_late = rows|selectattr('late')|list|length %}
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="ptms-kpi" style="--kpi-color:#0A4FA6; --kpi-bg:#E8F0FB;">
+            <div class="ptms-kpi-icon"><i class="bi bi-inbox"></i></div>
+            <div class="ptms-kpi-value">{{ nb_total }}</div>
+            <div class="ptms-kpi-label">Formulaires attendus</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="ptms-kpi" style="--kpi-color:#10B981; --kpi-bg:#D1FAE5;">
+            <div class="ptms-kpi-icon"><i class="bi bi-check-circle"></i></div>
+            <div class="ptms-kpi-value">{{ nb_submitted }} / {{ nb_total }}</div>
+            <div class="ptms-kpi-label">Formulaires Soumis</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="ptms-kpi" style="--kpi-color:#EF4444; --kpi-bg:#FEE2E2;">
+            <div class="ptms-kpi-icon"><i class="bi bi-exclamation-triangle"></i></div>
+            <div class="ptms-kpi-value">{{ nb_late }}</div>
+            <div class="ptms-kpi-label">Formulaires En Retard</div>
+        </div>
+    </div>
+</div>
+
+<div class="ptms-card">
+    <div class="ptms-card-header d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-box-seam text-primary" style="font-size:18px;"></i>
+            <span class="ptms-card-title">Matrice d'Expédition Colis & Réception Échantillons</span>
+        </div>
+    </div>
+    <div class="ptms-card-body p-0">
+    <form id="mass-shipping-form" action="{{ url_for('participants.update_mass_shipping') }}" method="POST">
+        {% if selected_campaign %}
+        <input type="hidden" name="campaign_id" value="{{ selected_campaign.id }}">
+        {% endif %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" style="font-size:13px;">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Laboratoire</th>
+                        <th>Essai / Paramètre</th>
+                        <th>Code Échantillon</th>
+                        <th>Transporteur / Tracking N°</th>
+                        <th>Statut Réception</th>
+                        <th>Échéance</th>
+                        <th>Soumission</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rows %}
+                    {% set f = r.form %}
+                    <tr class="{{ 'table-danger' if r.late }}">
+                        <td>
+                            <strong class="text-dark">{{ r.lab }}</strong>
+                        </td>
+                        <td>
+                            <div class="fw-semibold">{{ r.trial }}</div>
+                        </td>
+                        <!-- Code Échantillon -->
+                        <td>
+                            {% if f and f.sample_code %}
+                            <span class="badge bg-dark" style="font-family:monospace; font-size:11px;">{{ f.sample_code }}</span>
+                            {% if f.sample_quantity %}
+                            <div class="text-muted" style="font-size:10.5px;"><i class="bi bi-boxes me-1"></i>{{ f.sample_quantity }} éch.</div>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-muted" style="font-size:11px;font-style:italic;">—</span>
+                            {% endif %}
+                        </td>
+                        <!-- Transporteur & Tracking -->
+                        <td>
+                            {% if f %}
+                            <input type="hidden" name="form_ids" value="{{ f.id }}">
+                            <div class="d-flex align-items-center gap-1 mb-1">
+                                <input type="text" name="carrier_{{ f.id }}" class="form-control form-control-sm px-1 py-0" placeholder="Livreur" value="{{ f.carrier or '' }}" style="width:70px; font-size:11px;" title="Transporteur (ex: DHL)">
+                                <input type="text" name="tracking_number_{{ f.id }}" class="form-control form-control-sm px-1 py-0" placeholder="N° de suivi" value="{{ f.tracking_number or '' }}" style="width:105px; font-size:11px;" title="Numéro de suivi">
+                            </div>
+                            {% if f.tracking_number %}
+                            <div style="font-size:10.5px;">
+                                {% set c = (f.carrier or '')|lower %}
+                                {% if 'dhl' in c %}
+                                <a href="https://www.dhl.com/global-en/home/tracking.html?tracking-id={{ f.tracking_number }}" target="_blank" class="text-decoration-none" style="color:#0891b2;"><i class="bi bi-box-arrow-up-right me-1"></i>Suivre DHL</a>
+                                {% elif 'poste' in c or 'rapid' in c %}
+                                <a href="https://www.rapidposte.poste.tn/fr/Item_Events.asp?Item_ID={{ f.tracking_number }}" target="_blank" class="text-decoration-none" style="color:#0891b2;"><i class="bi bi-box-arrow-up-right me-1"></i>Suivre RapidPoste</a>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                            {% endif %}
+                        </td>
+                        <!-- Statut Réception -->
+                        <td>
+                            {% if f and f.received %}
+                            <span class="badge bg-success" style="font-size:11px;">
+                                <i class="bi bi-check-circle-fill me-1"></i>Reçu le {{ f.reception_date.strftime('%d/%m/%Y') if f.reception_date else '' }}
+                            </span>
+                            {% elif f and f.dispatch_confirmed %}
+                            <span class="badge bg-warning text-dark" style="font-size:11px;">
+                                <i class="bi bi-clock me-1"></i>En transit
+                            </span>
+                            {% else %}
+                            <span class="badge bg-secondary" style="font-size:11px;">
+                                <i class="bi bi-hourglass me-1"></i>En préparation
+                            </span>
+                            {% endif %}
+                        </td>
+                        <!-- Échéance -->
+                        <td>
+                            <span class="{{ 'text-danger fw-bold' if r.late else 'text-dark' }}">
+                                {{ r.due_date.strftime('%d/%m/%Y') if r.due_date else '—' }}
+                            </span>
+                        </td>
+                        <!-- Soumission -->
+                        <td>
+                            <span class="ptms-badge
+                                {% if r.status == 'pending' %}ptms-badge-warning
+                                {% elif r.status == 'submitted' %}ptms-badge-primary
+                                {% elif r.status == 'validated' %}ptms-badge-success
+                                {% elif r.status == 'anomaly' %}ptms-badge-danger
+                                {% endif %}">
+                                {{ 'EN RETARD' if r.late else r.status.upper() }}
+                            </span>
+                        </td>
+                        <!-- Actions -->
+                        <td>
+                        {% if f %}
+                        <div class="d-flex flex-column gap-1">
+
+                            {% if not f.dispatch_confirmed %}
+                            <!-- Bouton confirmer l'expédition (en 1 clic) -->
+                            <form action="{{ url_for('participants.update_shipping', form_id=f.id) }}" method="POST" class="m-0">
+                                <input type="hidden" name="sample_code" value="{{ f.sample_code or '' }}">
+                                <input type="hidden" name="tracking_number" value="{{ f.tracking_number or '' }}">
+                                <input type="hidden" name="carrier" value="{{ f.carrier or '' }}">
+                                <input type="hidden" name="dispatch_date" value="{{ f.dispatch_date.strftime('%Y-%m-%d') if f.dispatch_date else '' }}">
+                                <input type="hidden" name="sample_quantity" value="{{ f.sample_quantity or '' }}">
+                                <input type="hidden" name="dispatch_confirmed" value="1">
+                                <button type="submit" class="ptms-btn ptms-btn-sm w-100" style="background:#10b981; color:white; border:none;"
+                                    title="Confirmer que le colis a été expédié"
+                                    onclick="return confirm('Confirmer l\'expédition du colis pour {{ f.laboratory.code }} ?');">
+                                    <i class="bi bi-check2-circle me-1"></i> Valider l'envoi
+                                </button>
+                            </form>
+                            {% else %}
+                            <span class="ptms-btn ptms-btn-sm w-100" style="background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; cursor:default;">
+                                <i class="bi bi-check-circle-fill me-1"></i> Expédition validée
+                            </span>
+                            {% endif %}
+
+                            <!-- Bouton Modifier l'expédition -->
+                            <button type="button" class="ptms-btn ptms-btn-ghost ptms-btn-sm w-100"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#shippingModal"
+                                    data-form-id="{{ f.id }}"
+                                    data-sample-code="{{ f.sample_code or '' }}"
+                                    data-tracking-number="{{ f.tracking_number or '' }}"
+                                    data-carrier="{{ f.carrier or '' }}"
+                                    data-dispatch-date="{{ f.dispatch_date.strftime('%Y-%m-%d') if f.dispatch_date else '' }}"
+                                    data-sample-qty="{{ f.sample_quantity or '' }}"
+                                    data-dispatch-confirmed="{{ '1' if f.dispatch_confirmed else '0' }}"
+                                    title="Modifier les infos d'expédition">
+                                <i class="bi bi-pencil me-1"></i> Modifier
+                            </button>
+
+                            <div class="d-flex gap-1">
+                                <a href="{{ url_for('participants.parcel_status', form_id=f.id) }}" class="ptms-btn ptms-btn-outline ptms-btn-sm flex-fill text-center" title="Voir le statut du colis">
+                                    <i class="bi bi-eye"></i> Aperçu
+                                </a>
+                                <a href="{{ url_for('participants.qr_label', form_id=f.id) }}" target="_blank" class="ptms-btn ptms-btn-outline ptms-btn-sm" title="QR Code">
+                                    <i class="bi bi-qr-code-scan"></i>
+                                </a>
+                            </div>
+                        </div>
+                        {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center py-4 text-muted">Aucun formulaire pour cette campagne.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if rows %}
+        <div class="p-3 bg-light border-top text-end">
+            <button type="submit" class="ptms-btn ptms-btn-primary"><i class="bi bi-save me-2"></i>Enregistrer toutes les modifications</button>
+        </div>
+        {% endif %}
+    </form>
+    </div>
+</div>
+
+<!-- ====== MODALE D'EXPÉDITION (3 étapes) ====== -->
+<div class="modal fade" id="shippingModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header border-0 pb-0" style="background:linear-gradient(135deg,#0A4FA6,#1e40af); border-radius:12px 12px 0 0;">
+                <div>
+                    <h5 class="modal-title fw-bold text-white"><i class="bi bi-send me-2"></i>Gestion de l'Expédition Colis</h5>
+                    <p class="text-white-50 mb-0" style="font-size:12px;">Remplissez les informations d'envoi de l'échantillon au laboratoire participant</p>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <!-- Barre de progression des étapes -->
+            <div class="px-4 pt-3 pb-0">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div class="d-flex align-items-center gap-2" id="step-indicator-1">
+                        <div class="step-dot active" id="dot1">1</div>
+                        <span style="font-size:12px; font-weight:600; color:#0A4FA6;">Identification</span>
+                    </div>
+                    <div style="flex:1; height:2px; background:#e5e7eb; margin:0 8px; border-radius:2px;">
+                        <div id="progress-bar-1" style="height:100%; width:0%; background:#0A4FA6; border-radius:2px; transition:width .4s;"></div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2" id="step-indicator-2">
+                        <div class="step-dot" id="dot2">2</div>
+                        <span style="font-size:12px; color:#9ca3af;" id="step2-label">Photo & Qté</span>
+                    </div>
+                    <div style="flex:1; height:2px; background:#e5e7eb; margin:0 8px; border-radius:2px;">
+                        <div id="progress-bar-2" style="height:100%; width:0%; background:#0A4FA6; border-radius:2px; transition:width .4s;"></div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="step-dot" id="dot3">3</div>
+                        <span style="font-size:12px; color:#9ca3af;" id="step3-label">Tracking</span>
+                    </div>
+                </div>
+            </div>
+
+            <form method="POST" id="shippingForm" enctype="multipart/form-data">
+                <div class="modal-body px-4 pt-2">
+
+                    <!-- ÉTAPE 1 : Code Échantillon & Transporteur -->
+                    <div id="shipping-step-1">
+                        <h6 class="fw-bold mb-3" style="color:#374151;"><i class="bi bi-box me-2 text-primary"></i>Étape 1 — Identification de l'Échantillon</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="ptms-label">Code Échantillon <span class="text-danger">*</span></label>
+                                <input type="text" name="sample_code" id="modalSampleCode" class="ptms-input" placeholder="ex. FTE-2026-T2602-LAB01" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="ptms-label">Date d'Expédition <span class="text-danger">*</span></label>
+                                <input type="date" name="dispatch_date" id="modalDispatchDate" class="ptms-input" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="ptms-label">Transporteur</label>
+                                <input type="text" name="carrier" id="modalCarrier" class="ptms-input" placeholder="ex. DHL Express, RapidPoste..." list="carrierList">
+                                <datalist id="carrierList">
+                                    <option value="DHL Express"></option>
+                                    <option value="RapidPoste"></option>
+                                    <option value="FedEx"></option>
+                                    <option value="Aramex"></option>
+                                    <option value="Chronopost"></option>
+                                </datalist>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ÉTAPE 2 : Photo & Quantité -->
+                    <div id="shipping-step-2" class="d-none">
+                        <h6 class="fw-bold mb-3" style="color:#374151;"><i class="bi bi-camera me-2 text-primary"></i>Étape 2 — Photo des Échantillons & Quantité</h6>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="ptms-label">Nombre d'Échantillons envoyés <span class="text-danger">*</span></label>
+                                <input type="number" name="sample_quantity" id="modalSampleQty" class="ptms-input" placeholder="ex. 3" min="1" max="100">
+                            </div>
+                            <div class="col-12">
+                                <label class="ptms-label">Photo des Échantillons (preuve d'envoi)</label>
+                                <div class="border rounded-3 p-3 text-center" style="border-style:dashed!important; background:#f8fafc; cursor:pointer;" onclick="document.getElementById('photoInput').click()">
+                                    <div id="photoPreviewContainer">
+                                        <i class="bi bi-camera text-muted" style="font-size:32px;"></i>
+                                        <p class="text-muted small mb-0 mt-2">Cliquez pour ajouter une photo<br><span style="font-size:11px;">JPG, PNG, WEBP — max 5MB</span></p>
+                                    </div>
+                                    <img id="photoPreview" src="" alt="Aperçu" class="d-none rounded-3" style="max-height:200px; max-width:100%; object-fit:contain;">
+                                </div>
+                                <input type="file" name="sample_photo" id="photoInput" accept="image/*" class="d-none" onchange="previewPhoto(this)">
+                                <div id="currentPhotoInfo" class="text-muted small mt-1 d-none"><i class="bi bi-check-circle-fill text-success me-1"></i>Photo existante conservée si aucune nouvelle sélection.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ÉTAPE 3 : Tracking & Confirmation d'envoi -->
+                    <div id="shipping-step-3" class="d-none">
+                        <h6 class="fw-bold mb-3" style="color:#374151;"><i class="bi bi-send me-2 text-primary"></i>Étape 3 — Numéro de Suivi & Confirmation d'Envoi</h6>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="ptms-label">Numéro de Suivi Colis (Tracking N°)</label>
+                                <input type="text" name="tracking_number" id="modalTrackingNumber" class="ptms-input" placeholder="ex. 1234567890 ou JD014600019973697200">
+                                <div class="text-muted small mt-1" id="trackingHint"></div>
+                            </div>
+                            <div class="col-12">
+                                <div class="p-3 rounded-3" style="background:#f0fdf4; border:1px solid #bbf7d0;">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="dispatch_confirmed" value="1" id="confirmDispatchCheck">
+                                        <label class="form-check-label fw-semibold" for="confirmDispatchCheck" style="color:#065f46;">
+                                            <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                            Je confirme que le colis a bien été expédié au laboratoire participant
+                                        </label>
+                                    </div>
+                                    <p class="text-muted small mb-0 mt-1 ms-4">En cochant cette case, le statut passe à <strong>"En transit"</strong> et le laboratoire verra son colis comme expédié.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer border-0 pt-0 px-4 pb-3">
+                    <button type="button" class="ptms-btn ptms-btn-ghost" id="btnPrev" onclick="changeStep(-1)" style="display:none;">
+                        <i class="bi bi-arrow-left me-1"></i> Précédent
+                    </button>
+                    <button type="button" class="ptms-btn ptms-btn-ghost" data-bs-dismiss="modal">Annuler</button>
+                    <button type="button" class="ptms-btn ptms-btn-primary" id="btnNext" onclick="changeStep(1)">
+                        Suivant <i class="bi bi-arrow-right ms-1"></i>
+                    </button>
+                    <button type="submit" class="ptms-btn ptms-btn-primary d-none" id="btnSave">
+                        <i class="bi bi-check2-circle me-1"></i> Enregistrer l'expédition
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+.step-dot {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: #e5e7eb; color: #9ca3af; font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .3s;
+}
+.step-dot.active { background: #0A4FA6; color: white; box-shadow: 0 2px 8px rgba(10,79,166,.4); }
+.step-dot.done { background: #10b981; color: white; }
+</style>
+
+<script>
+let currentStep = 1;
+const totalSteps = 3;
+
+document.addEventListener('DOMContentLoaded', () => {
+    const shippingModalEl = document.getElementById('shippingModal');
+    if (shippingModalEl) {
+        shippingModalEl.addEventListener('show.bs.modal', (event) => {
+            const btn = event.relatedTarget;
+            if (!btn) return;
+
+            currentStep = 1;
+            updateStepUI();
+
+            const formId = btn.getAttribute('data-form-id');
+            const sampleCode = btn.getAttribute('data-sample-code') || '';
+            const trackingNumber = btn.getAttribute('data-tracking-number') || '';
+            const carrier = btn.getAttribute('data-carrier') || '';
+            const dispatchDate = btn.getAttribute('data-dispatch-date') || new Date().toISOString().slice(0,10);
+            const sampleQty = btn.getAttribute('data-sample-qty') || '';
+            const dispatchConfirmed = btn.getAttribute('data-dispatch-confirmed') === '1';
+
+            if (document.getElementById('modalSampleCode')) document.getElementById('modalSampleCode').value = sampleCode;
+            if (document.getElementById('modalTrackingNumber')) document.getElementById('modalTrackingNumber').value = trackingNumber;
+            if (document.getElementById('modalDispatchDate')) document.getElementById('modalDispatchDate').value = dispatchDate;
+            if (document.getElementById('modalSampleQty')) document.getElementById('modalSampleQty').value = sampleQty;
+            if (document.getElementById('confirmDispatchCheck')) document.getElementById('confirmDispatchCheck').checked = dispatchConfirmed;
+
+            const carrierInput = document.getElementById('modalCarrier');
+            if (carrierInput) carrierInput.value = carrier;
+
+            const photoInfo = document.getElementById('currentPhotoInfo');
+            if (photoInfo) {
+                if (sampleCode) photoInfo.classList.remove('d-none');
+                else photoInfo.classList.add('d-none');
+            }
+
+            const formEl = document.getElementById('shippingForm');
+            if (formEl && formId) {
+                formEl.action = '/participants/form/' + formId + '/update-shipping';
+            }
+            updateTrackingHint();
+        });
+    }
+
+    const carrierSel = document.getElementById('modalCarrier');
+    if (carrierSel) carrierSel.addEventListener('change', updateTrackingHint);
+});
+
+function changeStep(dir) {
+    currentStep = Math.min(Math.max(currentStep + dir, 1), totalSteps);
+    updateStepUI();
+}
+
+function updateStepUI() {
+    for (let i = 1; i <= totalSteps; i++) {
+        const stepEl = document.getElementById('shipping-step-' + i);
+        if (stepEl) stepEl.classList.add('d-none');
+    }
+    const curStepEl = document.getElementById('shipping-step-' + currentStep);
+    if (curStepEl) curStepEl.classList.remove('d-none');
+
+    // Dots
+    for (let i = 1; i <= totalSteps; i++) {
+        const dot = document.getElementById('dot' + i);
+        if (dot) {
+            dot.classList.remove('active', 'done');
+            if (i < currentStep) dot.classList.add('done');
+            else if (i === currentStep) dot.classList.add('active');
+        }
+    }
+
+    // Progress bars
+    const p1 = document.getElementById('progress-bar-1');
+    const p2 = document.getElementById('progress-bar-2');
+    if (p1) p1.style.width = currentStep > 1 ? '100%' : '0%';
+    if (p2) p2.style.width = currentStep > 2 ? '100%' : '0%';
+
+    // Labels colors
+    const l2 = document.getElementById('step2-label');
+    const l3 = document.getElementById('step3-label');
+    if (l2) {
+        l2.style.color = currentStep >= 2 ? '#0A4FA6' : '#9ca3af';
+        l2.style.fontWeight = currentStep >= 2 ? '600' : '400';
+    }
+    if (l3) {
+        l3.style.color = currentStep >= 3 ? '#0A4FA6' : '#9ca3af';
+        l3.style.fontWeight = currentStep >= 3 ? '600' : '400';
+    }
+
+    // Buttons
+    const btnPrev = document.getElementById('btnPrev');
+    const btnNext = document.getElementById('btnNext');
+    const btnSave = document.getElementById('btnSave');
+    if (btnPrev) btnPrev.style.display = currentStep > 1 ? 'inline-flex' : 'none';
+    if (btnNext) btnNext.classList.toggle('d-none', currentStep === totalSteps);
+    if (btnSave) btnSave.classList.toggle('d-none', currentStep !== totalSteps);
+}
+
+function previewPhoto(input) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = e => {
+            const photoPrev = document.getElementById('photoPreview');
+            const photoPrevCont = document.getElementById('photoPreviewContainer');
+            if (photoPrev) {
+                photoPrev.src = e.target.result;
+                photoPrev.classList.remove('d-none');
+            }
+            if (photoPrevCont) photoPrevCont.classList.add('d-none');
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+function updateTrackingHint() {
+    const carrierSel = document.getElementById('modalCarrier');
+    const hint = document.getElementById('trackingHint');
+    if (!carrierSel || !hint) return;
+    const carrier = carrierSel.value.toLowerCase();
+    if (carrier.includes('dhl')) {
+        hint.innerHTML = '<i class="bi bi-info-circle me-1"></i>Format DHL : 10 chiffres (ex: 1234567890) ou JD014600...';
+    } else if (carrier.includes('poste') || carrier.includes('rapid')) {
+        hint.innerHTML = '<i class="bi bi-info-circle me-1"></i>Format RapidPoste : code alphanumérique de la Poste TN';
+    } else {
+        hint.innerHTML = '';
+    }
+}
+</script>
+
+{% else %}
+<p class="text-muted">Aucune campagne disponible.</p>
+{% endif %}
+{% endblock %}

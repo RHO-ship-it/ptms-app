@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Connexion{% endblock %}
+
+{% block content_noauth %}
+<div class="ptms-login-wrap">
+    <div class="ptms-login-card">
+        <div class="ptms-login-logo">
+            <div class="ptms-brand-logo" style="width:48px;height:48px;font-size:24px;">P</div>
+            <div>
+                <div class="ptms-login-title">PTMS</div>
+                <div class="ptms-login-subtitle">Proficiency Testing Management System</div>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="mb-3">
+            {% for category, message in messages %}
+            <div class="ptms-alert ptms-alert-{{ 'danger' if category == 'danger' else ('success' if category == 'success' else ('warning' if category == 'warning' else 'info')) }}">
+                <i class="bi bi-{{ 'x-circle' if category == 'danger' else ('check-circle' if category == 'success' else ('exclamation-triangle' if category == 'warning' else 'info-circle')) }} ptms-alert-icon"></i>
+                <div>{{ message }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('auth.login') }}" class="ptms-login-form">
+            <div>
+                <label class="ptms-login-label">Nom d'utilisateur</label>
+                <div class="ptms-login-input-wrap">
+                    <i class="bi bi-person-fill ptms-login-input-icon"></i>
+                    <input type="text" class="ptms-login-input with-icon"
+                           name="username" id="username"
+                           placeholder="admin"
+                           required autofocus autocomplete="username">
+                </div>
+            </div>
+            <div>
+                <label class="ptms-login-label">Mot de passe</label>
+                <div class="ptms-login-input-wrap">
+                    <i class="bi bi-lock-fill ptms-login-input-icon"></i>
+                    <input type="password" class="ptms-login-input with-icon"
+                           name="password" id="password"
+                           placeholder="••••••••"
+                           required autocomplete="current-password">
+                </div>
+            </div>
+            <button type="submit" class="ptms-login-btn">
+                <i class="bi bi-box-arrow-in-right"></i>
+                Se connecter
+            </button>
+        </form>
+
+        <hr class="ptms-login-divider">
+
+        <div class="ptms-login-footer">
+            <div class="mb-2" style="font-weight:600; color:#6B7280; font-size:11px; text-transform:uppercase; letter-spacing:.6px;">
+                Comptes de démonstration
+            </div>
+            <div style="font-family: 'JetBrains Mono', monospace, sans-serif; font-size:11.5px; color:#374151; line-height:2;">
+                <span style="background:#F3F4F6; border-radius:5px; padding:2px 7px;">admin / admin123</span> &nbsp;
+                <span style="background:#F3F4F6; border-radius:5px; padding:2px 7px;">chef.technique / chef123</span> &nbsp;
+                <span style="background:#F3F4F6; border-radius:5px; padding:2px 7px;">auditeur / audit123</span>
+            </div>
+        </div>
+    </div>
+
+    <div style="text-align:center; margin-top:20px; font-size:12px; color:rgba(255,255,255,.5);">
+        © TTS Testing — Tous droits réservés
+    </div>
+</div>
+
+<style>
+    .ptms-login-wrap {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: linear-gradient(135deg, #0A4FA6 0%, #073A7A 55%, #0F172A 100%);
+    }
+    .ptms-login-card {
+        width: 100%;
+        max-width: 420px;
+        background: #fff;
+        border-radius: 18px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.35);
+        padding: 36px 34px;
+    }
+    .ptms-login-logo {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 26px;
+    }
+    .ptms-login-title {
+        font-size: 22px;
+        font-weight: 800;
+        color: #0F172A;
+        letter-spacing: -0.3px;
+    }
+    .ptms-login-subtitle {
+        font-size: 11px;
+        color: #64748B;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: .5px;
+    }
+    .ptms-login-form {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+    }
+    .ptms-login-label {
+        display: block;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #0F172A;
+        margin-bottom: 6px;
+    }
+    .ptms-login-input-wrap {
+        position: relative;
+    }
+    .ptms-login-input-icon {
+        position: absolute;
+        left: 13px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #94A3B8;
+        font-size: 15px;
+        pointer-events: none;
+    }
+    .ptms-login-input {
+        width: 100%;
+        padding: 11px 14px;
+        border: 1.5px solid #E2E8F0;
+        border-radius: 10px;
+        font-size: 14px;
+        font-family: 'Inter', sans-serif;
+        color: #0F172A;
+        outline: none;
+        transition: border-color .2s, box-shadow .2s;
+    }
+    .ptms-login-input.with-icon { padding-left: 40px; }
+    .ptms-login-input:focus {
+        border-color: #0A4FA6;
+        box-shadow: 0 0 0 3px rgba(10,79,166,.12);
+    }
+    .ptms-login-btn {
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #0A4FA6, #00B4D8);
+        color: #fff;
+        font-size: 14.5px;
+        font-weight: 700;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: transform .2s, box-shadow .2s;
+        font-family: 'Inter', sans-serif;
+    }
+    .ptms-login-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 20px rgba(10,79,166,.35);
+    }
+    .ptms-login-divider {
+        border: none;
+        border-top: 1px solid #E2E8F0;
+        margin: 24px 0 18px;
+    }
+</style>
+{% endblock %}

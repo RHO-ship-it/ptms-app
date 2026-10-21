@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Laboratoires{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="bi bi-building"></i> Laboratoires</h3>
+    {% if current_user.role in ['admin','chef_technique'] %}
+    <a href="{{ url_for('laboratories.new_lab') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Nouveau laboratoire</a>
+    {% endif %}
+</div>
+
+<div class="card card-kpi p-3 mb-3">
+    <form class="row g-2">
+        <div class="col-md-4">
+            <input type="text" name="q" class="form-control" placeholder="Rechercher par code ou nom..." value="{{ q }}">
+        </div>
+        <div class="col-md-2"><button class="btn btn-outline-primary w-100">Rechercher</button></div>
+    </form>
+</div>
+
+<div class="card card-kpi p-3">
+    <table class="table table-hover">
+        <thead><tr><th>Code</th><th>Nom</th><th>Contact</th><th>Email</th><th>Statut</th><th></th></tr></thead>
+        <tbody>
+        {% for lab in labs %}
+            <tr>
+                <td>{{ lab.code }}</td><td>{{ lab.name }}</td><td>{{ lab.contact_name or '-' }}</td>
+                <td>{{ lab.email or '-' }}</td>
+                <td><span class="badge bg-{{ 'success' if lab.active else 'secondary' }}">{{ 'Actif' if lab.active else 'Inactif' }}</span></td>
+                <td class="d-flex gap-1 justify-content-end">
+                    <a href="{{ url_for('laboratories.view_lab', lab_id=lab.id) }}" class="btn btn-sm btn-outline-primary">Voir</a>
+                    {% if current_user.role == 'admin' %}
+                    <form action="{{ url_for('laboratories.delete_lab', lab_id=lab.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer ce laboratoire ? (Action irréversible : supprime utilisateurs et historiques associés)');">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="6" class="text-center text-muted">Aucun laboratoire trouvé.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

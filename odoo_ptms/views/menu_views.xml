@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Menu principal PTMS -->
+        <menuitem id="menu_ptms_root" 
+                  name="PTMS" 
+                  web_icon="odoo_ptms,static/description/icon.png"
+                  sequence="10"/>
+
+        <!-- Sous-menus -->
+        <menuitem id="menu_ptms_campaigns" 
+                  name="Campagnes" 
+                  parent="menu_ptms_root" 
+                  action="action_ptms_campaign" 
+                  sequence="10"/>
+                  
+        <menuitem id="menu_ptms_trials" 
+                  name="Essais" 
+                  parent="menu_ptms_root" 
+                  action="action_ptms_trial" 
+                  sequence="20"/>
+
+        <menuitem id="menu_ptms_laboratories" 
+                  name="Laboratoires" 
+                  parent="menu_ptms_root" 
+                  action="action_ptms_laboratories" 
+                  sequence="30"/>
+    </data>
+</odoo>

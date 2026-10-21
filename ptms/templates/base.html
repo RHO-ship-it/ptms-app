@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="PTMS – Plateforme de gestion des essais d'aptitude ISO/IEC 17043 pour les laboratoires accrédités.">
+    <title>{% block title %}PTMS{% endblock %} | Proficiency Testing Management System</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Bootstrap & Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+    <style>
+        /* ============================
+           DESIGN TOKENS & VARIABLES
+        ============================ */
+        :root {
+            --ptms-primary:       #0A4FA6;
+            --ptms-primary-dark:  #073A7A;
+            --ptms-primary-light: #E8F0FB;
+            --ptms-accent:        #00B4D8;
+            --ptms-accent2:       #06D6A0;
+            --ptms-danger:        #EF4444;
+            --ptms-warning:       #F59E0B;
+            --ptms-success:       #10B981;
+            --ptms-dark:          #0F172A;
+            --ptms-muted:         #64748B;
+            --ptms-border:        #E2E8F0;
+            --ptms-bg:            #F0F4FA;
+            --ptms-card:          #FFFFFF;
+            --ptms-sidebar-w:     260px;
+            --ptms-nav-h:         62px;
+            --ptms-radius:        12px;
+            --ptms-radius-lg:     18px;
+            --ptms-shadow:        0 2px 12px rgba(10,79,166,.09);
+            --ptms-shadow-md:     0 4px 24px rgba(10,79,166,.14);
+            --ptms-transition:    0.22s cubic-bezier(.4,0,.2,1);
+            --font-main:          'Inter', system-ui, sans-serif;
+            --font-mono:          'JetBrains Mono', monospace;
+        }
+
+        /* ============================
+           RESET & BASE
+        ============================ */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: var(--font-main);
+            background: var(--ptms-bg);
+            color: var(--ptms-dark);
+            font-size: 14px;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ============================
+           TOP NAVBAR
+        ============================ */
+        .ptms-topnav {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: var(--ptms-nav-h);
+            background: #fff;
+            border-bottom: 1px solid var(--ptms-border);
+            z-index: 1050;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 16px;
+            box-shadow: 0 1px 8px rgba(0,0,0,.06);
+        }
+
+        .ptms-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            flex-shrink: 0;
+        }
+
+        .ptms-brand-logo {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, var(--ptms-primary), var(--ptms-accent));
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+            font-weight: 800;
+            box-shadow: 0 2px 8px rgba(10,79,166,.3);
+        }
+
+        .ptms-brand-text {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.1;
+        }
+
+        .ptms-brand-name {
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--ptms-primary);
+            letter-spacing: -0.3px;
+        }
+
+        .ptms-brand-sub {
+            font-size: 10px;
+            color: var(--ptms-muted);
+            font-weight: 500;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+        }
+
+        .ptms-topnav-divider {
+            width: 1px;
+            height: 28px;
+            background: var(--ptms-border);
+            flex-shrink: 0;
+        }
+
+        .ptms-topnav-search {
+            flex: 1;
+            max-width: 380px;
+        }
+
+        .ptms-topnav-search input {
+            background: var(--ptms-bg);
+            border: 1.5px solid var(--ptms-border);
+            border-radius: 8px;
+            padding: 8px 14px 8px 38px;
+            font-size: 13px;
+            width: 100%;
+            outline: none;
+            transition: border-color var(--ptms-transition);
+            font-family: var(--font-main);
+        }
+
+        .ptms-topnav-search input:focus {
+            border-color: var(--ptms-primary);
+            background: #fff;
+        }
+
+        .ptms-topnav-search-icon {
+            position: absolute;
+            left: 12px; top: 50%;
+            transform: translateY(-50%);
+            color: var(--ptms-muted);
+            font-size: 14px;
+            pointer-events: none;
+        }
+
+        .ptms-topnav-actions {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .ptms-icon-btn {
+            width: 36px; height: 36px;
+            border-radius: 8px;
+            border: 1.5px solid var(--ptms-border);
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--ptms-muted);
+            font-size: 17px;
+            transition: all var(--ptms-transition);
+            text-decoration: none;
+            position: relative;
+        }
+
+        .ptms-icon-btn:hover {
+            background: var(--ptms-primary-light);
+            border-color: var(--ptms-primary);
+            color: var(--ptms-primary);
+        }
+
+        .ptms-notif-dot {
+            position: absolute;
+            top: 4px; right: 4px;
+            width: 8px; height: 8px;
+            background: var(--ptms-danger);
+            border-radius: 50%;
+            border: 1.5px solid #fff;
+        }
+
+        .ptms-user-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 10px 5px 5px;
+            border-radius: 8px;
+            border: 1.5px solid var(--ptms-border);
+            cursor: pointer;
+            transition: all var(--ptms-transition);
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .ptms-user-pill:hover {
+            background: var(--ptms-primary-light);
+            border-color: var(--ptms-primary);
+        }
+
+        .ptms-user-avatar {
+            width: 28px; height: 28px;
+            border-radius: 6px;
+            background: linear-gradient(135deg, var(--ptms-primary), var(--ptms-accent));
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .ptms-user-info { line-height: 1.2; }
+        .ptms-user-name { font-size: 12.5px; font-weight: 600; color: var(--ptms-dark); }
+        .ptms-user-role { font-size: 10px; color: var(--ptms-muted); }
+
+        /* ============================
+           SIDEBAR
+        ============================ */
+        .ptms-sidebar {
+            position: fixed;
+            top: var(--ptms-nav-h);
+            left: 0;
+            bottom: 0;
+            width: var(--ptms-sidebar-w);
+            background: var(--ptms-dark);
+            overflow-y: auto;
+            overflow-x: hidden;
+            z-index: 1040;
+            display: flex;
+            flex-direction: column;
+            transition: width var(--ptms-transition);
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,.1) transparent;
+        }
+
+        .ptms-sidebar::-webkit-scrollbar { width: 4px; }
+        .ptms-sidebar::-webkit-scrollbar-track { background: transparent; }
+        .ptms-sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 4px; }
+
+        .ptms-sidebar-inner {
+            padding: 16px 12px;
+            flex: 1;
+        }
+
+        .ptms-sidebar-section {
+            margin-bottom: 6px;
+        }
+
+        .ptms-sidebar-section-label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: rgba(255,255,255,.3);
+            padding: 10px 10px 6px;
+        }
+
+        .ptms-nav-link {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 12px;
+            border-radius: 9px;
+            color: rgba(255,255,255,.65);
+            text-decoration: none;
+            font-size: 13.5px;
+            font-weight: 500;
+            transition: all var(--ptms-transition);
+            margin-bottom: 2px;
+            position: relative;
+            white-space: nowrap;
+        }
+
+        .ptms-nav-link i {
+            font-size: 16px;
+            flex-shrink: 0;
+            width: 20px;
+            text-align: center;
+        }
+
+        .ptms-nav-link:hover {
+            background: rgba(255,255,255,.07);
+            color: rgba(255,255,255,.95);
+        }
+
+        .ptms-nav-link.active {
+            background: linear-gradient(135deg, var(--ptms-primary), rgba(0,180,216,.6));
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(10,79,166,.4);
+        }
+
+        .ptms-nav-link.active i { color: #fff; }
+
+        .ptms-nav-badge {
+            margin-left: auto;
+            background: var(--ptms-danger);
+            color: white;
+            font-size: 10px;
+            font-weight: 700;
+            border-radius: 10px;
+            padding: 1px 6px;
+            flex-shrink: 0;
+        }
+
+        .ptms-sidebar-divider {
+            height: 1px;
+            background: rgba(255,255,255,.07);
+            margin: 8px 12px;
+        }
+
+        .ptms-sidebar-footer {
+            padding: 12px;
+            border-top: 1px solid rgba(255,255,255,.06);
+        }
+
+        .ptms-sidebar-footer-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            color: rgba(255,255,255,.5);
+            text-decoration: none;
+            font-size: 13px;
+            transition: all var(--ptms-transition);
+        }
+
+        .ptms-sidebar-footer-link:hover {
+            background: rgba(255,255,255,.07);
+            color: rgba(255,255,255,.85);
+        }
+
+        /* ============================
+           MAIN CONTENT
+        ============================ */
+        .ptms-main {
+            margin-left: var(--ptms-sidebar-w);
+            margin-top: var(--ptms-nav-h);
+            min-height: calc(100vh - var(--ptms-nav-h));
+            padding: 28px 32px;
+            transition: margin-left var(--ptms-transition);
+        }
+
+        /* ============================
+           CARDS
+        ============================ */
+        .ptms-card {
+            background: var(--ptms-card);
+            border-radius: var(--ptms-radius-lg);
+            box-shadow: var(--ptms-shadow);
+            border: 1px solid var(--ptms-border);
+            overflow: hidden;
+            transition: box-shadow var(--ptms-transition);
+        }
+
+        .ptms-card:hover { box-shadow: var(--ptms-shadow-md); }
+
+        .ptms-card-header {
+            padding: 18px 22px 14px;
+            border-bottom: 1px solid var(--ptms-border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .ptms-card-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--ptms-dark);
+            flex: 1;
+        }
+
+        .ptms-card-body { padding: 20px 22px; }
+
+        /* KPI Cards */
+        .ptms-kpi {
+            background: var(--ptms-card);
+            border-radius: var(--ptms-radius-lg);
+            border: 1px solid var(--ptms-border);
+            padding: 20px 22px;
+            position: relative;
+            overflow: hidden;
+            transition: all var(--ptms-transition);
+            cursor: default;
+        }
+
+        .ptms-kpi:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--ptms-shadow-md);
+        }
+
+        .ptms-kpi::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--kpi-color, var(--ptms-primary)), transparent);
+        }
+
+        .ptms-kpi-icon {
+            width: 44px; height: 44px;
+            border-radius: 11px;
+            background: var(--kpi-bg, var(--ptms-primary-light));
+            color: var(--kpi-color, var(--ptms-primary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            margin-bottom: 14px;
+        }
+
+        .ptms-kpi-value {
+            font-size: 30px;
+            font-weight: 800;
+            color: var(--ptms-dark);
+            line-height: 1;
+            margin-bottom: 4px;
+            font-family: var(--font-main);
+        }
+
+        .ptms-kpi-label {
+            font-size: 12.5px;
+            color: var(--ptms-muted);
+            font-weight: 500;
+        }
+
+        .ptms-kpi-sub {
+            font-size: 11.5px;
+            color: var(--ptms-muted);
+            margin-top: 6px;
+        }
+
+        /* ============================
+           TABLES
+        ============================ */
+        .ptms-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 13.5px;
+        }
+
+        .ptms-table thead th {
+            background: var(--ptms-bg);
+            color: var(--ptms-muted);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.7px;
+            padding: 11px 16px;
+            border-bottom: 1px solid var(--ptms-border);
+            white-space: nowrap;
+        }
+
+        .ptms-table thead th:first-child { border-radius: 0; }
+
+        .ptms-table tbody td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #F1F5F9;
+            vertical-align: middle;
+            color: var(--ptms-dark);
+        }
+
+        .ptms-table tbody tr:hover td { background: #F8FAFC; }
+        .ptms-table tbody tr:last-child td { border-bottom: none; }
+
+        /* ============================
+           BADGES & STATUS
+        ============================ */
+        .ptms-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
+            border-radius: 20px;
+            font-size: 11.5px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .ptms-badge-primary   { background: #DBEAFE; color: #1D4ED8; }
+        .ptms-badge-success   { background: #D1FAE5; color: #065F46; }
+        .ptms-badge-warning   { background: #FEF3C7; color: #92400E; }
+        .ptms-badge-danger    { background: #FEE2E2; color: #991B1B; }
+        .ptms-badge-info      { background: #CFFAFE; color: #164E63; }
+        .ptms-badge-secondary { background: #F1F5F9; color: #475569; }
+        .ptms-badge-dark      { background: #1E293B; color: #CBD5E1; }
+
+        /* ============================
+           BUTTONS
+        ============================ */
+        .ptms-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13.5px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            text-decoration: none;
+            transition: all var(--ptms-transition);
+            font-family: var(--font-main);
+            white-space: nowrap;
+        }
+
+        .ptms-btn-primary {
+            background: var(--ptms-primary);
+            color: white;
+            box-shadow: 0 2px 8px rgba(10,79,166,.25);
+        }
+
+        .ptms-btn-primary:hover {
+            background: var(--ptms-primary-dark);
+            color: white;
+            box-shadow: 0 4px 14px rgba(10,79,166,.35);
+            transform: translateY(-1px);
+        }
+
+        .ptms-btn-outline {
+            background: transparent;
+            color: var(--ptms-primary);
+            border: 1.5px solid var(--ptms-primary);
+        }
+
+        .ptms-btn-outline:hover {
+            background: var(--ptms-primary-light);
+            color: var(--ptms-primary);
+        }
+
+        .ptms-btn-ghost {
+            background: transparent;
+            color: var(--ptms-muted);
+            border: 1.5px solid var(--ptms-border);
+        }
+
+        .ptms-btn-ghost:hover {
+            background: var(--ptms-bg);
+            color: var(--ptms-dark);
+        }
+
+        .ptms-btn-sm {
+            padding: 5px 11px;
+            font-size: 12px;
+        }
+
+        .ptms-btn-danger {
+            background: var(--ptms-danger);
+            color: white;
+        }
+
+        .ptms-btn-danger:hover {
+            background: #DC2626;
+            color: white;
+        }
+
+        .ptms-btn-success {
+            background: var(--ptms-success);
+            color: white;
+        }
+
+        /* ============================
+           ALERTS / FLASH
+        ============================ */
+        .ptms-alert {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 14px 18px;
+            border-radius: 10px;
+            font-size: 13.5px;
+            margin-bottom: 12px;
+            border: 1px solid transparent;
+        }
+
+        .ptms-alert-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+        .ptms-alert-success  { background: #ECFDF5; border-color: #A7F3D0; color: #065F46; }
+        .ptms-alert-danger   { background: #FEF2F2; border-color: #FECACA; color: #991B1B; }
+        .ptms-alert-warning  { background: #FFFBEB; border-color: #FDE68A; color: #92400E; }
+        .ptms-alert-info     { background: #EFF6FF; border-color: #BFDBFE; color: #1E40AF; }
+
+        /* ============================
+           BREADCRUMB
+        ============================ */
+        .ptms-breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12.5px;
+            color: var(--ptms-muted);
+            margin-bottom: 20px;
+        }
+
+        .ptms-breadcrumb a {
+            color: var(--ptms-primary);
+            text-decoration: none;
+        }
+
+        .ptms-breadcrumb a:hover { text-decoration: underline; }
+        .ptms-breadcrumb-sep { color: var(--ptms-border); }
+
+        /* ============================
+           PAGE HEADER
+        ============================ */
+        .ptms-page-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .ptms-page-title {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--ptms-dark);
+            line-height: 1.2;
+            letter-spacing: -0.3px;
+        }
+
+        .ptms-page-subtitle {
+            font-size: 13px;
+            color: var(--ptms-muted);
+            margin-top: 3px;
+        }
+
+        /* ============================
+           FORM ELEMENTS
+        ============================ */
+        .ptms-form-group { margin-bottom: 18px; }
+        .ptms-label {
+            display: block;
+            font-size: 12.5px;
+            font-weight: 600;
+            color: var(--ptms-dark);
+            margin-bottom: 6px;
+        }
+
+        .ptms-input, .ptms-select, .ptms-textarea {
+            width: 100%;
+            padding: 9px 13px;
+            border: 1.5px solid var(--ptms-border);
+            border-radius: 8px;
+            font-size: 13.5px;
+            font-family: var(--font-main);
+            color: var(--ptms-dark);
+            background: #fff;
+            outline: none;
+            transition: border-color var(--ptms-transition);
+        }
+
+        .ptms-input:focus, .ptms-select:focus, .ptms-textarea:focus {
+            border-color: var(--ptms-primary);
+            box-shadow: 0 0 0 3px rgba(10,79,166,.1);
+        }
+
+        /* ============================
+           SECTION DIVIDERS
+        ============================ */
+        .ptms-section-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--ptms-muted);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ptms-section-label::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--ptms-border);
+        }
+
+        /* ============================
+           TABS
+        ============================ */
+        .ptms-tabs {
+            display: flex;
+            gap: 4px;
+            border-bottom: 1px solid var(--ptms-border);
+            margin-bottom: 20px;
+        }
+
+        .ptms-tab {
+            padding: 9px 16px;
+            font-size: 13.5px;
+            font-weight: 500;
+            color: var(--ptms-muted);
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all var(--ptms-transition);
+            margin-bottom: -1px;
+        }
+
+        .ptms-tab:hover { color: var(--ptms-primary); }
+        .ptms-tab.active {
+            color: var(--ptms-primary);
+            border-bottom-color: var(--ptms-primary);
+            font-weight: 600;
+        }
+
+        /* ============================
+           ISO STATUS PILLS
+        ============================ */
+        .status-active   { --kpi-color: #10B981; --kpi-bg: #D1FAE5; }
+        .status-draft    { --kpi-color: #6366F1; --kpi-bg: #EDE9FE; }
+        .status-closed   { --kpi-color: #6B7280; --kpi-bg: #F3F4F6; }
+        .status-pending  { --kpi-color: #F59E0B; --kpi-bg: #FEF3C7; }
+        .status-anomaly  { --kpi-color: #EF4444; --kpi-bg: #FEE2E2; }
+
+        /* ============================
+           TOOLTIPS
+        ============================ */
+        [data-ptms-tooltip] {
+            position: relative;
+            cursor: help;
+        }
+
+        [data-ptms-tooltip]::after {
+            content: attr(data-ptms-tooltip);
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--ptms-dark);
+            color: white;
+            font-size: 11.5px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s;
+            z-index: 9999;
+        }
+
+        [data-ptms-tooltip]:hover::after { opacity: 1; }
+
+        /* ============================
+           SCROLLBAR GLOBAL
+        ============================ */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+        /* ============================
+           RESPONSIVE
+        ============================ */
+        @media (max-width: 992px) {
+            .ptms-sidebar { width: 0; overflow: hidden; }
+            .ptms-main { margin-left: 0; padding: 20px 16px; }
+            .ptms-topnav-search { display: none; }
+        }
+
+        /* ============================
+           ANIMATION UTILITIES
+        ============================ */
+        @keyframes fadeSlideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .ptms-animate { animation: fadeSlideIn 0.3s ease forwards; }
+
+        /* ============================
+           OVERRIDE BOOTSTRAP DEFAULTS
+        ============================ */
+        .card { border-radius: var(--ptms-radius-lg); border-color: var(--ptms-border); box-shadow: var(--ptms-shadow); }
+        .btn { border-radius: 8px; font-weight: 600; }
+        .badge { border-radius: 20px; font-weight: 600; }
+        .table { font-size: 13.5px; }
+        .table > :not(caption) > * > * { padding: 11px 14px; }
+        .form-control, .form-select {
+            border-radius: 8px;
+            border-color: var(--ptms-border);
+            font-size: 13.5px;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: var(--ptms-primary);
+            box-shadow: 0 0 0 3px rgba(10,79,166,.1);
+        }
+        .alert { border-radius: 10px; }
+
+        {% block extra_style %}{% endblock %}
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+{% if current_user.is_authenticated %}
+
+<!-- ===== TOP NAVIGATION ===== -->
+<nav class="ptms-topnav">
+    <a class="ptms-brand" href="{{ url_for('dashboard.index') }}">
+        <div class="ptms-brand-logo">P</div>
+        <div class="ptms-brand-text">
+            <span class="ptms-brand-name">PTMS</span>
+            <span class="ptms-brand-sub">ISO/IEC 17043</span>
+        </div>
+    </a>
+
+    <div class="ptms-topnav-divider"></div>
+
+    <div class="ptms-topnav-search position-relative">
+        <i class="bi bi-search ptms-topnav-search-icon"></i>
+        <input type="text" placeholder="Rechercher campagne, essai, laboratoire…" id="globalSearch">
+    </div>
+
+    <div class="ptms-topnav-actions">
+        <!-- Quick actions -->
+        {% if current_user.is_staff() %}
+        <a href="{{ url_for('wizard.start') }}" class="ptms-icon-btn" title="Nouvelle campagne">
+            <i class="bi bi-plus-lg"></i>
+        </a>
+        {% endif %}
+
+        <!-- Notifications -->
+        <a href="{{ url_for('dashboard.index') }}" class="ptms-icon-btn" id="notifBtn">
+            <i class="bi bi-bell"></i>
+            {% if unread_notifications and unread_notifications > 0 %}
+            <span class="ptms-notif-dot"></span>
+            {% endif %}
+        </a>
+
+        <!-- Dark mode toggle placeholder -->
+        <button class="ptms-icon-btn" onclick="toggleTheme()" title="Apparence">
+            <i class="bi bi-moon-stars" id="themeIcon"></i>
+        </button>
+
+        <!-- User pill -->
+        <div class="dropdown">
+            <a class="ptms-user-pill" data-bs-toggle="dropdown" href="#">
+                <div class="ptms-user-avatar">
+                    {{ current_user.full_name[:2].upper() if current_user.full_name else 'PT' }}
+                </div>
+                <div class="ptms-user-info">
+                    <div class="ptms-user-name">{{ current_user.full_name or current_user.email }}</div>
+                    <div class="ptms-user-role">{{ current_user.role }}</div>
+                </div>
+                <i class="bi bi-chevron-down ms-1" style="font-size:11px;color:var(--ptms-muted)"></i>
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="min-width:200px; border-radius:12px;">
+                <li class="px-3 py-2 border-bottom">
+                    <div class="fw-semibold" style="font-size:13px;">{{ current_user.full_name }}</div>
+                    <div class="text-muted" style="font-size:11.5px;">{{ current_user.email }}</div>
+                </li>
+                <li><a class="dropdown-item" href="{{ url_for('auth.profile') }}"><i class="bi bi-person me-2"></i>Mon profil</a></li>
+                {% if current_user.is_staff() %}
+                <li><a class="dropdown-item" href="{{ url_for('statistics.index') }}"><i class="bi bi-graph-up me-2"></i>Statistiques</a></li>
+                {% endif %}
+                <li><hr class="dropdown-divider my-1"></li>
+                <li><a class="dropdown-item text-danger" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right me-2"></i>Déconnexion</a></li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<!-- ===== SIDEBAR ===== -->
+<aside class="ptms-sidebar" id="ptmsSidebar">
+    <div class="ptms-sidebar-inner">
+
+        <!-- NAVIGATION PRINCIPALE -->
+        <div class="ptms-sidebar-section">
+            <div class="ptms-sidebar-section-label">Navigation</div>
+            <a href="{{ url_for('dashboard.index') }}" class="ptms-nav-link {% if request.endpoint and 'dashboard' in request.endpoint %}active{% endif %}">
+                <i class="bi bi-grid-1x2"></i> Tableau de bord
+            </a>
+        </div>
+
+        {% if current_user.is_staff() %}
+        <div class="ptms-sidebar-section">
+            <div class="ptms-sidebar-section-label">Gestion des Essais</div>
+            <a href="{{ url_for('campaigns.list_campaigns') }}" class="ptms-nav-link {% if request.endpoint and 'campaign' in request.endpoint %}active{% endif %}">
+                <i class="bi bi-collection"></i> Campagnes
+            </a>
+            {% if current_user.role in ['admin','chef_technique'] %}
+            <a href="{{ url_for('wizard.start') }}" class="ptms-nav-link {% if request.endpoint and 'wizard' in request.endpoint %}active{% endif %}">
+                <i class="bi bi-magic"></i> Nouvelle Campagne
+                <span class="ptms-nav-badge" style="background:var(--ptms-accent2);">+</span>
+            </a>
+            {% endif %}
+            <a href="{{ url_for('laboratories.list_labs') }}" class="ptms-nav-link {% if request.endpoint and 'laborator' in request.endpoint %}active{% endif %}">
+                <i class="bi bi-building"></i> Laboratoires
+            </a>
+        </div>
+
+        <div class="ptms-sidebar-section">
+            <div class="ptms-sidebar-section-label">Commercial & CRM</div>
+            <a href="{{ url_for('commercial.index') }}" class="ptms-nav-link {% if request.endpoint == 'commercial.index' %}active{% endif %}">
+                <i class="bi bi-briefcase"></i> Portefeuille CRM
+            </a>
+            <a href="{{ url_for('commercial.campaign_analytics') }}" class="ptms-nav-link {% if request.endpoint == 'commercial.campaign_analytics' %}active{% endif %}">
+                <i class="bi bi-graph-up-arrow"></i> Analytics Campagnes
+                <span class="ptms-nav-badge" style="background:#10B981;">17025</span>
+            </a>
+        </div>
+
+        <div class="ptms-sidebar-section">
+            <div class="ptms-sidebar-section-label">Suivi & Résultats</div>
+            <a href="{{ url_for('participants.tracker') }}" class="ptms-nav-link {% if request.endpoint and 'tracker' in request.endpoint %}active{% endif %}">
+                <i class="bi bi-list-check"></i> Suivi des soumissions
+            </a>
+            <a href="{{ url_for('participants.validation_center') }}" class="ptms-nav-link {% if request.endpoint and 'validation' in request.endpoint %}active{% endif %}">
+                <i class="bi bi-patch-check"></i> Centre de validation
+            </a>
+        </div>
+
+        <div class="ptms-sidebar-section">
+            <div class="ptms-sidebar-section-label">Analyse & Statistiques</div>
+            <a href="{{ url_for('traitement.atelier') }}" class="ptms-nav-link {% if request.endpoint == 'traitement.atelier' %}active{% endif %}">
+                <i class="bi bi-calculator"></i> Atelier statistique
+            </a>
+            <a href="{{ url_for('traitement.dashboard') }}" class="ptms-nav-link {% if request.endpoint == 'traitement.dashboard' %}active{% endif %}">
+                <i class="bi bi-grid-3x3-gap-fill"></i> Dashboard Récapitulatif
+            </a>
+            <a href="{{ url_for('statistics.index') }}" class="ptms-nav-link {% if request.endpoint and 'statistics' in request.endpoint %}active{% endif %}">
+                <i class="bi bi-graph-up-arrow"></i> Centre de statistiques
+            </a>
+            <a href="{{ url_for('reports.index') }}" class="ptms-nav-link {% if request.endpoint and 'report' in request.endpoint %}active{% endif %}">
+                <i class="bi bi-file-earmark-bar-graph"></i> Rapports
+            </a>
+        </div>
+        {% endif %}
+
+        {% if current_user.is_participant() %}
+        <div class="ptms-sidebar-section">
+            <div class="ptms-sidebar-section-label">Espace Participant</div>
+            <a href="{{ url_for('participants.portal') }}" class="ptms-nav-link {% if request.endpoint and 'portal' in request.endpoint %}active{% endif %}">
+                <i class="bi bi-inbox-fill"></i> Mes formulaires
+            </a>
+            <a href="{{ url_for('participants.my_contact_info') }}" class="ptms-nav-link {% if request.endpoint and 'contact' in request.endpoint %}active{% endif %}">
+                <i class="bi bi-person-lines-fill"></i> Mes coordonnées
+            </a>
+        </div>
+        {% endif %}
+
+        {% if current_user.is_admin() or current_user.role == 'auditeur' %}
+        <div class="ptms-sidebar-divider"></div>
+        <div class="ptms-sidebar-section">
+            <div class="ptms-sidebar-section-label">Administration</div>
+            {% if current_user.is_admin() %}
+            <a href="{{ url_for('admin.list_users') }}" class="ptms-nav-link {% if request.endpoint and 'admin' in request.endpoint and 'user' in request.endpoint %}active{% endif %}">
+                <i class="bi bi-people"></i> Utilisateurs
+            </a>
+            {% endif %}
+            <a href="{{ url_for('admin.audit_trail') }}" class="ptms-nav-link {% if request.endpoint and 'audit' in request.endpoint %}active{% endif %}">
+                <i class="bi bi-shield-check"></i> Audit Trail
+            </a>
+        </div>
+        {% endif %}
+
+    </div>
+
+    <!-- Sidebar Footer -->
+    <div class="ptms-sidebar-footer">
+        <div style="font-size:10px; color:rgba(255,255,255,.25); padding:0 10px 8px; text-transform:uppercase; letter-spacing:.8px;">
+            TTS Testing v2.0
+        </div>
+        <a href="{{ url_for('auth.profile') }}" class="ptms-sidebar-footer-link">
+            <i class="bi bi-gear"></i> Paramètres
+        </a>
+        <a href="{{ url_for('auth.logout') }}" class="ptms-sidebar-footer-link">
+            <i class="bi bi-box-arrow-right"></i> Déconnexion
+        </a>
+    </div>
+</aside>
+
+<!-- ===== MAIN CONTENT ===== -->
+<main class="ptms-main ptms-animate">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="mb-3">
+        {% for category, message in messages %}
+        <div class="ptms-alert ptms-alert-{{ 'success' if category == 'success' else ('danger' if category == 'danger' else ('warning' if category == 'warning' else 'info')) }}">
+            <i class="bi bi-{{ 'check-circle' if category == 'success' else ('x-circle' if category == 'danger' else ('exclamation-triangle' if category == 'warning' else 'info-circle')) }} ptms-alert-icon"></i>
+            <div>{{ message }}</div>
+            <button type="button" onclick="this.closest('.ptms-alert').remove()" style="margin-left:auto; background:none; border:none; cursor:pointer; color:inherit; font-size:16px; opacity:.6;">&times;</button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</main>
+
+{% else %}
+<!-- ===== AUTH PAGES (NO SIDEBAR) ===== -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="container mt-3">
+    {% for category, message in messages %}
+    <div class="ptms-alert ptms-alert-{{ category }}">
+        <i class="bi bi-info-circle ptms-alert-icon"></i>
+        <div>{{ message }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+{% block content_noauth %}{% endblock %}
+{% endif %}
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    // ===== THEME TOGGLE =====
+    function toggleTheme() {
+        document.body.classList.toggle('dark-mode');
+        const icon = document.getElementById('themeIcon');
+        icon.className = document.body.classList.contains('dark-mode')
+            ? 'bi bi-sun' : 'bi bi-moon-stars';
+        localStorage.setItem('ptms-theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+    }
+
+    // Restore theme
+    if (localStorage.getItem('ptms-theme') === 'dark') {
+        document.body.classList.add('dark-mode');
+        const icon = document.getElementById('themeIcon');
+        if (icon) icon.className = 'bi bi-sun';
+    }
+
+    // ===== ACTIVE NAV AUTO-DETECT =====
+    document.querySelectorAll('.ptms-nav-link').forEach(link => {
+        if (link.href && link.href !== '#' && window.location.pathname.startsWith(new URL(link.href).pathname) && link.href !== window.location.origin + '/') {
+            link.classList.add('active');
+        }
+    });
+
+    // ===== GLOBAL SEARCH (UI only, hookable) =====
+    const searchEl = document.getElementById('globalSearch');
+    if (searchEl) {
+        searchEl.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && searchEl.value.trim()) {
+                window.location.href = '/campaigns?q=' + encodeURIComponent(searchEl.value.trim());
+            }
+        });
+    }
+</script>
+
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+{% block title %}Analytics Campagnes & ISO 17025 — Commercial PTMS{% endblock %}
+
+{% block extra_style %}
+.campaign-selector-card {
+    background: linear-gradient(135deg, #0F172A, #1E293B);
+    color: white;
+    border-radius: 18px;
+    padding: 24px;
+    box-shadow: 0 4px 20px rgba(15,23,42,.15);
+    margin-bottom: 24px;
+}
+.stat-card-clean {
+    background: #ffffff;
+    border: 1px solid var(--ptms-border);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: var(--ptms-shadow-sm);
+    transition: all var(--ptms-transition);
+}
+.stat-card-clean:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--ptms-shadow);
+}
+.stat-icon-wrapper {
+    width: 46px; height: 46px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+}
+.progress-lg {
+    height: 10px;
+    border-radius: 6px;
+    background: #E2E8F0;
+}
+{% endblock %}
+
+{% block content %}
+
+<!-- Header & Breadcrumb -->
+<div class="ptms-breadcrumb">
+    <a href="{{ url_for('dashboard.index') }}"><i class="bi bi-grid-1x2 me-1"></i>Accueil</a>
+    <span class="ptms-breadcrumb-sep">/</span>
+    <a href="{{ url_for('commercial.index') }}">Commercial & CRM</a>
+    <span class="ptms-breadcrumb-sep">/</span>
+    <span>Analytics Campagnes & ISO 17025</span>
+</div>
+
+<div class="ptms-page-header mb-3">
+    <div>
+        <div class="ptms-page-title"><i class="bi bi-graph-up-arrow text-primary me-2"></i>Données Commerciales & ISO 17025 par Campagne</div>
+        <div class="ptms-page-subtitle">Analyse détaillée de la fidélité client et du taux d'accréditation ISO/IEC 17025 par essai et par campagne (ISO 17043 §8.9)</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('commercial.index') }}" class="ptms-btn ptms-btn-ghost">
+            <i class="bi bi-arrow-left me-1"></i> Retour au Portefeuille CRM
+        </a>
+    </div>
+</div>
+
+<!-- SÉLECTEUR DE CAMPAGNE -->
+<div class="campaign-selector-card">
+    <form method="GET" action="{{ url_for('commercial.campaign_analytics') }}" class="row align-items-center g-3">
+        <div class="col-md-6">
+            <label class="form-label text-white-50 fw-semibold mb-1" style="font-size:12px;">SÉLECTIONNER UNE CAMPAGNE</label>
+            <select name="campaign_id" class="form-select form-select-lg border-0 shadow-sm" style="border-radius:12px; font-weight:700; font-size:15px;" onchange="this.form.submit()">
+                {% for c in campaigns %}
+                <option value="{{ c.id }}" {% if selected_campaign and selected_campaign.id == c.id %}selected{% endif %}>
+                    {{ c.reference }} — {{ c.name }} ({{ c.status.upper() }})
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-6">
+            {% if selected_campaign %}
+            <div class="d-flex align-items-center justify-content-md-end gap-3 text-white">
+                <div>
+                    <div class="text-white-50" style="font-size:11px;">DATES DE LA CAMPAGNE</div>
+                    <div class="fw-bold" style="font-size:13.5px;">
+                        {{ selected_campaign.start_date.strftime('%d/%m/%Y') if selected_campaign.start_date else 'NC' }} ➔ {{ selected_campaign.end_date.strftime('%d/%m/%Y') if selected_campaign.end_date else 'NC' }}
+                    </div>
+                </div>
+                <div class="vr bg-white opacity-25" style="height:35px;"></div>
+                <div>
+                    <div class="text-white-50" style="font-size:11px;">STATUT</div>
+                    <span class="badge {% if selected_campaign.status=='active' %}bg-success{% elif selected_campaign.status=='closed' %}bg-dark{% else %}bg-warning text-dark{% endif %} px-3 py-2" style="border-radius:8px;">
+                        {{ selected_campaign.status.upper() }}
+                    </span>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+{% if selected_campaign %}
+
+<!-- KPI ROW SPÉCIFIQUE CAMPAGNE -->
+<div class="row g-3 mb-4">
+    <!-- Total Participants -->
+    <div class="col-md-3">
+        <div class="stat-card-clean">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-muted fw-semibold" style="font-size:12.5px;">Participants Rattachés</span>
+                <div class="stat-icon-wrapper" style="background:#E8F0FB; color:#0A4FA6;"><i class="bi bi-building"></i></div>
+            </div>
+            <div class="d-flex align-items-baseline gap-2">
+                <div style="font-size:28px; font-weight:800; color:var(--ptms-dark);">{{ campaign_labs|length }}</div>
+                <span class="text-muted" style="font-size:12px;">laboratoires</span>
+            </div>
+            <div class="text-muted mt-1" style="font-size:11.5px;">Laboratoires inscrits à {{ selected_campaign.reference }}</div>
+        </div>
+    </div>
+
+    <!-- Clients Fidèles -->
+    <div class="col-md-3">
+        <div class="stat-card-clean">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-muted fw-semibold" style="font-size:12.5px;">Clients Fidèles</span>
+                <div class="stat-icon-wrapper" style="background:#D1FAE5; color:#10B981;"><i class="bi bi-trophy"></i></div>
+            </div>
+            <div class="d-flex align-items-baseline gap-2">
+                <div style="font-size:28px; font-weight:800; color:#10B981;">{{ fidele_count }}</div>
+                <span class="badge bg-success bg-opacity-10 text-success fw-bold">{{ fidele_pct }}% du total</span>
+            </div>
+            <div class="text-muted mt-1" style="font-size:11.5px;">Laboratoires récurrents (statut Fidèle)</div>
+        </div>
+    </div>
+
+    <!-- Taux ISO 17025 -->
+    <div class="col-md-3">
+        <div class="stat-card-clean">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-muted fw-semibold" style="font-size:12.5px;">Accrédités ISO 17025</span>
+                <div class="stat-icon-wrapper" style="background:#EDE9FE; color:#6366F1;"><i class="bi bi-patch-check"></i></div>
+            </div>
+            <div class="d-flex align-items-baseline gap-2">
+                <div style="font-size:28px; font-weight:800; color:#6366F1;">{{ iso17025_count }}</div>
+                <span class="badge bg-primary bg-opacity-10 text-primary fw-bold">{{ iso17025_pct }}% accrédités</span>
+            </div>
+            <div class="progress progress-lg mt-2">
+                <div class="progress-bar bg-primary" role="progressbar" style="width: {{ iso17025_pct }}%;" aria-valuenow="{{ iso17025_pct }}" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Total Essais -->
+    <div class="col-md-3">
+        <div class="stat-card-clean">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-muted fw-semibold" style="font-size:12.5px;">Nombre d'Essais</span>
+                <div class="stat-icon-wrapper" style="background:#FEF3C7; color:#D97706;"><i class="bi bi-flask"></i></div>
+            </div>
+            <div class="d-flex align-items-baseline gap-2">
+                <div style="font-size:28px; font-weight:800; color:#D97706;">{{ selected_campaign.trials|length }}</div>
+                <span class="text-muted" style="font-size:12px;">paramètres d'essai</span>
+            </div>
+            <div class="text-muted mt-1" style="font-size:11.5px;">Configurés pour cette campagne</div>
+        </div>
+    </div>
+</div>
+
+<!-- SECTION 1 : VENTILATION ISO 17025 PAR ESSAI (PARAMÈTRE) -->
+<div class="ptms-card mb-4">
+    <div class="ptms-card-header d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-bar-chart-steps text-primary" style="font-size:18px;"></i>
+            <span class="ptms-card-title">Taux d'Accréditation ISO 17025 par Essai (Paramètre)</span>
+        </div>
+        <span class="ptms-badge ptms-badge-info"><i class="bi bi-info-circle me-1"></i>Ventilation par méthode/paramètre</span>
+    </div>
+    <div class="ptms-card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" style="font-size:13px;">
+                <thead class="bg-light">
+                    <tr>
+                        <th>Nom de l'Essai</th>
+                        <th>Paramètre / Unité</th>
+                        <th>Type d'Essai</th>
+                        <th>Participants / Soumissions</th>
+                        <th style="min-width:200px;">Ratio Accrédités ISO 17025</th>
+                        <th>Pourcentage (%) ISO 17025</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in trial_stats %}
+                    <tr>
+                        <td>
+                            <strong class="text-dark">{{ item.trial.name }}</strong>
+                            {% if item.trial.sample_reference %}
+                            <div class="text-muted" style="font-size:11px;">Réf: {{ item.trial.sample_reference }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div>{{ item.trial.parameter }}</div>
+                            {% if item.trial.unit %}<span class="text-muted" style="font-size:11.5px;">Unité: {{ item.trial.unit }}</span>{% endif %}
+                        </td>
+                        <td>
+                            <span class="ptms-badge" style="
+                                background:{{ '#E8F0FB' if item.trial.trial_type=='quantitative' else ('#EDE9FE' if item.trial.trial_type=='qualitative' else '#FEF3C7') }};
+                                color:{{ '#0A4FA6' if item.trial.trial_type=='quantitative' else ('#6366F1' if item.trial.trial_type=='qualitative' else '#92400E') }};">
+                                {{ 'Quantitatif' if item.trial.trial_type=='quantitative' else ('Qualitatif' if item.trial.trial_type=='qualitative' else 'Solidité') }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="fw-bold text-dark">{{ item.total_forms }}</span> form(s)
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center justify-content-between mb-1" style="font-size:12px;">
+                                <span><strong class="text-success">{{ item.iso_count }}</strong> ISO 17025</span>
+                                <span class="text-muted">{{ item.non_iso_count }} non-accrédités</span>
+                            </div>
+                            <div class="progress progress-lg">
+                                <div class="progress-bar {% if item.iso_pct >= 60 %}bg-success{% elif item.iso_pct >= 30 %}bg-primary{% else %}bg-warning{% endif %}"
+                                     role="progressbar" style="width: {{ item.iso_pct }}%;" aria-valuenow="{{ item.iso_pct }}" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="fw-bold fs-6 {% if item.iso_pct >= 60 %}text-success{% elif item.iso_pct >= 30 %}text-primary{% else %}text-warning{% endif %}">
+                                    {{ item.iso_pct }}%
+                                </span>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4 text-muted">Aucun essai n'est rattaché à cette campagne.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- SECTION 2 : CLIENTS FIDÈLES ET ACCRÉDITÉS DE LA CAMPAGNE -->
+<div class="row g-4 mb-4">
+    <!-- Clients Fidèles -->
+    <div class="col-lg-6">
+        <div class="ptms-card h-100">
+            <div class="ptms-card-header">
+                <i class="bi bi-trophy text-warning" style="font-size:18px;"></i>
+                <span class="ptms-card-title">Clients Fidèles de cette Campagne</span>
+                <span class="ptms-badge ptms-badge-success">{{ fidele_labs|length }} lab(s)</span>
+            </div>
+            <div class="ptms-card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" style="font-size:12.5px;">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>Laboratoire</th>
+                                <th>Contact / E-mail</th>
+                                <th>ISO 17025</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for lab in fidele_labs %}
+                            <tr>
+                                <td>
+                                    <strong class="text-dark">{{ lab.code }}</strong>
+                                    <div class="text-muted" style="font-size:11px;">{{ lab.name[:25] }}</div>
+                                </td>
+                                <td>
+                                    <div>{{ lab.contact_name or '—' }}</div>
+                                    <div class="text-muted" style="font-size:11px;">{{ lab.email or '' }}</div>
+                                </td>
+                                <td>
+                                    {% if lab.iso17025_accredited %}
+                                    <span class="badge bg-success"><i class="bi bi-patch-check me-1"></i>Accrédité</span>
+                                    {% else %}
+                                    <span class="badge bg-light text-muted border">Non accrédité</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center py-4 text-muted">Aucun client au statut « Fidèle » dans cette campagne.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tous les Laboratoires et Statut ISO 17025 -->
+    <div class="col-lg-6">
+        <div class="ptms-card h-100">
+            <div class="ptms-card-header">
+                <i class="bi bi-patch-check text-primary" style="font-size:18px;"></i>
+                <span class="ptms-card-title">Gestion de l'Accréditation ISO 17025</span>
+                <span class="ptms-badge ptms-badge-primary">{{ iso17025_count }} accrédité(s)</span>
+            </div>
+            <div class="ptms-card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" style="font-size:12.5px;">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>Code / Lab</th>
+                                <th>Statut Commercial</th>
+                                <th>Accréditation ISO 17025</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for lab in campaign_labs %}
+                            <tr>
+                                <td>
+                                    <strong class="text-dark">{{ lab.code }}</strong>
+                                    <div class="text-muted" style="font-size:11px;">{{ lab.name[:22] }}</div>
+                                </td>
+                                <td>
+                                    <span class="badge
+                                        {% if lab.commercial_status == 'prospect' %}bg-secondary
+                                        {% elif lab.commercial_status == 'confirme' %}bg-primary
+                                        {% elif lab.commercial_status == 'retenu' %}bg-warning text-dark
+                                        {% elif lab.commercial_status == 'fidele' %}bg-success
+                                        {% endif %}">
+                                        {{ lab.get_commercial_status_label() }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if lab.iso17025_accredited %}
+                                    <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Accrédité ISO 17025</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary opacity-75">Non accrédité</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('commercial.toggle_iso17025', lab_id=lab.id) }}" style="display:inline;">
+                                        <button type="submit" class="btn btn-sm {% if lab.iso17025_accredited %}btn-outline-danger{% else %}btn-outline-success{% endif %}" style="font-size:11px; border-radius:6px;">
+                                            {% if lab.iso17025_accredited %}Retirer ISO 17025{% else %}+ Marquer ISO 17025{% endif %}
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center py-4 text-muted">Aucun laboratoire rattaché.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+
+{% endblock %}

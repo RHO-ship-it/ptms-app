@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Mes coordonnées{% endblock %}
+{% block content %}
+<h3 class="mb-4"><i class="bi bi-person-lines-fill"></i> Mes coordonnées</h3>
+
+<div class="alert alert-info">
+    Cette page vous permet de mettre à jour uniquement les coordonnées de contact de votre laboratoire
+    ({{ lab.code }}). Les autres informations (essais, résultats) restent accessibles depuis « Mes formulaires ».
+</div>
+
+<div class="card card-kpi p-4" style="max-width:600px;">
+    <form method="POST">
+        <div class="mb-3">
+            <label class="form-label">Laboratoire</label>
+            <input type="text" class="form-control" value="{{ lab.name }} ({{ lab.code }})" disabled>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Nom du contact</label>
+            <input type="text" class="form-control" name="contact_name" value="{{ lab.contact_name or '' }}">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-control" name="email" value="{{ lab.email or '' }}">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Téléphone</label>
+            <input type="text" class="form-control" name="phone" value="{{ lab.phone or '' }}">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Adresse</label>
+            <textarea class="form-control" name="address" rows="2">{{ lab.address or '' }}</textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+    </form>
+</div>
+{% endblock %}

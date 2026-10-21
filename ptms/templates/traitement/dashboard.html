@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+{% block title %}Dashboard Statistique — {{ selected_campaign.reference if selected_campaign else 'Campagne' }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+  <!-- ── Header ───────────────────────────────────────────────────────── -->
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
+    <div>
+      <h1 class="h3 fw-bold mb-1">
+        <i class="bi bi-grid-3x3-gap-fill text-primary me-2"></i>Dashboard — Récapitulatif de Traitement
+      </h1>
+      <p class="text-muted mb-0">Synthèse ISO 13528 / ISO/IEC 17043 par campagne d'essais d'aptitude</p>
+    </div>
+    <a href="{{ url_for('traitement.atelier') }}{% if selected_campaign %}?trial_id={{ selected_campaign.trials[0].id if selected_campaign.trials else '' }}{% endif %}"
+       class="btn btn-outline-primary">
+      <i class="bi bi-bar-chart-line-fill me-1"></i>Atelier Détaillé
+    </a>
+  </div>
+
+  <!-- ── Sélection Campagne ───────────────────────────────────────────── -->
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-body py-3">
+      <form method="get" class="row g-2 align-items-center">
+        <div class="col-auto">
+          <label class="col-form-label fw-semibold"><i class="bi bi-diagram-3 me-1"></i>Campagne</label>
+        </div>
+        <div class="col-md-4">
+          <select name="campaign_id" class="form-select" onchange="this.form.submit()">
+            {% for c in campaigns %}
+            <option value="{{ c.id }}" {% if selected_campaign and c.id == selected_campaign.id %}selected{% endif %}>
+              {{ c.reference }} — {{ c.name }} ({{ c.status }})
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        {% if selected_campaign %}
+        <div class="col-auto">
+          <span class="badge rounded-pill bg-{{ 'success' if selected_campaign.status == 'active' else 'secondary' }} fs-6 px-3">
+            {{ selected_campaign.status | upper }}
+          </span>
+        </div>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  {% if selected_campaign %}
+
+  <!-- ── KPIs Globaux ─────────────────────────────────────────────────── -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-2">
+      <div class="card border-0 shadow-sm text-center h-100">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-primary">{{ global_kpis.total_trials }}</div>
+          <div class="small text-muted">Essais</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card border-0 shadow-sm text-center h-100">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-info">{{ global_kpis.total_participants }}</div>
+          <div class="small text-muted">Participations</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card border-0 shadow-sm text-center h-100">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-success">{{ global_kpis.total_satisfying }}</div>
+          <div class="small text-muted">Satisfaisants</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card border-0 shadow-sm text-center h-100">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-warning">{{ global_kpis.total_doubtful }}</div>
+          <div class="small text-muted">Douteux</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card border-0 shadow-sm text-center h-100">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold text-danger">{{ global_kpis.total_unsatisfying }}</div>
+          <div class="small text-muted">Non satisfaisants</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <div class="card border-0 shadow-sm text-center h-100">
+        <div class="card-body py-3">
+          <div class="display-6 fw-bold {% if global_kpis.conformity_rate >= 80 %}text-success{% elif global_kpis.conformity_rate >= 60 %}text-warning{% else %}text-danger{% endif %}">
+            {{ global_kpis.conformity_rate }}%
+          </div>
+          <div class="small text-muted">Conformité globale</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Barre conformité globale ─────────────────────────────────────── -->
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-body py-3">
+      <div class="d-flex justify-content-between small mb-1">
+        <span class="text-success fw-semibold">Satisfaisants ({{ global_kpis.total_satisfying }})</span>
+        <span class="text-warning fw-semibold">Douteux ({{ global_kpis.total_doubtful }})</span>
+        <span class="text-danger fw-semibold">Non satisfaisants ({{ global_kpis.total_unsatisfying }})</span>
+      </div>
+      {% set total_eval = global_kpis.total_satisfying + global_kpis.total_doubtful + global_kpis.total_unsatisfying %}
+      <div class="progress" style="height:20px;border-radius:10px;">
+        {% if total_eval > 0 %}
+        <div class="progress-bar bg-success" style="width:{{ (global_kpis.total_satisfying / total_eval * 100) | round(0) | int }}%"></div>
+        <div class="progress-bar bg-warning" style="width:{{ (global_kpis.total_doubtful / total_eval * 100) | round(0) | int }}%"></div>
+        <div class="progress-bar bg-danger" style="width:{{ (global_kpis.total_unsatisfying / total_eval * 100) | round(0) | int }}%"></div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Alertes ISO ────────────────────────────────────────────────────── -->
+  {% if global_kpis.iso_alerts %}
+  <div class="card border-warning border-2 shadow-sm mb-4">
+    <div class="card-header bg-warning text-dark py-2">
+      <i class="bi bi-exclamation-triangle-fill me-2"></i><strong>Alertes ISO — Actions Requises</strong>
+      <span class="badge bg-dark ms-2">{{ global_kpis.iso_alerts | length }}</span>
+    </div>
+    <ul class="list-group list-group-flush">
+      {% for alert in global_kpis.iso_alerts %}
+      <li class="list-group-item list-group-item-warning py-2 small">{{ alert }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <!-- ── Carte par essai ───────────────────────────────────────────────── -->
+  {% for card in trial_cards %}
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header py-2 d-flex align-items-center justify-content-between flex-wrap gap-2
+      {% if card.type == 'quantitative' %}bg-primary{% elif card.type == 'qualitative' %}bg-success{% else %}bg-warning text-dark{% endif %} text-white">
+      <div>
+        <span class="badge bg-white {% if card.type == 'quantitative' %}text-primary{% elif card.type == 'qualitative' %}text-success{% else %}text-warning{% endif %} me-2">
+          {{ card.type_label }}
+        </span>
+        <strong>{{ card.trial.name }}</strong>
+        {% if card.trial.parameter %}<span class="ms-2 opacity-75">— {{ card.trial.parameter }}{% if card.trial.unit %} ({{ card.trial.unit }}){% endif %}</span>{% endif %}
+      </div>
+      <a href="{{ url_for('traitement.atelier', trial_id=card.trial.id) }}"
+         class="btn btn-sm btn-light">
+        <i class="bi bi-bar-chart me-1"></i>Analyse Détaillée
+      </a>
+    </div>
+
+    <div class="card-body">
+      <div class="row g-3">
+        <!-- KPIs de l'essai -->
+        <div class="col-md-4">
+          <div class="row g-2">
+            <div class="col-6">
+              <div class="bg-light rounded p-2 text-center">
+                <div class="fw-bold fs-5">{{ card.n }}</div>
+                <div class="small text-muted">Participants</div>
+              </div>
+            </div>
+
+            {% if card.type == 'quantitative' %}
+            <div class="col-6">
+              <div class="bg-light rounded p-2 text-center">
+                <div class="fw-bold fs-5 text-primary">{{ card.kpis.x_pt | round(4) if card.kpis.x_pt else '—' }}</div>
+                <div class="small text-muted">x<sub>pt</sub></div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="bg-light rounded p-2 text-center">
+                <div class="fw-bold fs-5 text-info">{{ card.kpis.sigma_pt | round(4) if card.kpis.sigma_pt else '—' }}</div>
+                <div class="small text-muted">σ<sub>pt</sub></div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="bg-light rounded p-2 text-center">
+                <div class="fw-bold fs-5 {% if card.kpis.conform_rate >= 80 %}text-success{% elif card.kpis.conform_rate >= 60 %}text-warning{% else %}text-danger{% endif %}">
+                  {{ card.kpis.conform_rate }}%
+                </div>
+                <div class="small text-muted">Conformité</div>
+              </div>
+            </div>
+
+            {% elif card.type == 'qualitative' %}
+            <div class="col-6">
+              <div class="bg-light rounded p-2 text-center">
+                <div class="fw-bold fs-6 text-success">{{ card.kpis.consensus or '—' }}</div>
+                <div class="small text-muted">Consensus</div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="bg-light rounded p-2 text-center">
+                <div class="fw-bold fs-5">{{ card.kpis.agreement_rate }}%</div>
+                <div class="small text-muted">Accord</div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="bg-light rounded p-2 text-center">
+                <div class="fw-bold fs-5">κ {{ card.kpis.kappa if card.kpis.kappa is not none else '—' }}</div>
+                <div class="small text-muted">Kappa</div>
+              </div>
+            </div>
+
+            {% else %}{# solidite #}
+            <div class="col-6">
+              <div class="bg-light rounded p-2 text-center">
+                <div class="fw-bold fs-5">9</div>
+                <div class="small text-muted">Paramètres</div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="bg-light rounded p-2 text-center">
+                <div class="fw-bold fs-5 {% if card.kpis.conform_rate >= 80 %}text-success{% else %}text-warning{% endif %}">
+                  {{ card.kpis.conform_rate }}%
+                </div>
+                <div class="small text-muted">Conformité</div>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Outils utilisés (résumé) -->
+        <div class="col-md-5">
+          <h6 class="fw-semibold small text-muted mb-2">
+            <i class="bi bi-wrench me-1"></i>Outils Statistiques Appliqués
+          </h6>
+          <div class="d-flex flex-column gap-1">
+            {% for t in card.tools_summary %}
+            <div class="d-flex align-items-start gap-2">
+              <span class="badge bg-{{ t.status }} mt-1 flex-shrink-0" style="width:10px;height:10px;padding:0;border-radius:50%;"></span>
+              <div class="small">
+                <span class="fw-semibold">{{ t.outil }}</span>
+                <span class="text-muted ms-1">— {{ t.resultat[:60] }}{% if t.resultat | length > 60 %}…{% endif %}</span>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Alertes de l'essai -->
+        <div class="col-md-3">
+          {% if card.alerts %}
+          <h6 class="fw-semibold small text-muted mb-2">
+            <i class="bi bi-exclamation-triangle me-1"></i>Alertes
+          </h6>
+          {% for al in card.alerts %}
+          <div class="alert alert-{{ al.type }} py-1 small mb-1">{{ al.msg }}</div>
+          {% endfor %}
+          {% else %}
+          <div class="alert alert-success py-2 small">
+            <i class="bi bi-check-circle me-1"></i>Aucune alerte pour cet essai
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Mini tableau conformité participants -->
+      {% if card.type == 'quantitative' and card.participant_results %}
+      <hr class="mt-3 mb-2">
+      <div class="d-flex flex-wrap gap-2">
+        {% for p in card.participant_results %}
+        <span class="badge bg-{{ p.z_badge }}" title="{{ p.lab_code }} — z={{ p.z_score }}" style="font-size:0.75rem;">
+          {{ p.lab_code }} | z={{ p.z_score if p.z_score is not none else '?' }}
+        </span>
+        {% endfor %}
+      </div>
+      {% elif card.type == 'qualitative' and card.participant_results %}
+      <hr class="mt-3 mb-2">
+      <div class="d-flex flex-wrap gap-2">
+        {% for p in card.participant_results %}
+        <span class="badge bg-{{ 'success' if p.conform else 'danger' }}" title="{{ p.lab_code }} — {{ p.result }}" style="font-size:0.75rem;">
+          {{ p.lab_code }} | {{ p.result or '?' }}
+        </span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-info">Aucun essai dans cette campagne.</div>
+  {% endfor %}
+
+  <!-- ── Graphique global (Chart.js) ──────────────────────────────────── -->
+  {% if trial_cards %}
+  <div class="row g-4 mt-2">
+    <div class="col-md-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header py-2"><i class="bi bi-bar-chart me-2"></i><strong>Conformité par Essai</strong></div>
+        <div class="card-body">
+          <canvas id="conformityChart" height="220"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header py-2"><i class="bi bi-pie-chart me-2"></i><strong>Répartition Globale</strong></div>
+        <div class="card-body d-flex align-items-center justify-content-center">
+          <canvas id="globalPieChart" style="max-height:250px;"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="alert alert-info">
+    <i class="bi bi-info-circle me-2"></i>Sélectionnez une campagne pour afficher le tableau de bord statistique.
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+{% if trial_cards %}
+
+// ── Barre conformité par essai ──────────────────────────────────────────────
+(function() {
+  const ctx = document.getElementById('conformityChart');
+  if (!ctx) return;
+  const labels = {{ trial_cards | map(attribute='trial') | map(attribute='name') | list | tojson }};
+  const conformRates = [
+    {% for c in trial_cards %}
+    {{ c.kpis.conform_rate if c.kpis.conform_rate is defined else 0 }},
+    {% endfor %}
+  ];
+  const colors = conformRates.map(r => r >= 80 ? '#2ecc71' : (r >= 60 ? '#f39c12' : '#e74c3c'));
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: '% Conformité',
+        data: conformRates,
+        backgroundColor: colors,
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: { min: 0, max: 100, title: { display: true, text: '% Conformité' } }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+})();
+
+// ── Pie global ────────────────────────────────────────────────────────────
+(function() {
+  const ctx = document.getElementById('globalPieChart');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Satisfaisants', 'Douteux', 'Non satisfaisants'],
+      datasets: [{
+        data: [{{ global_kpis.total_satisfying }}, {{ global_kpis.total_doubtful }}, {{ global_kpis.total_unsatisfying }}],
+        backgroundColor: ['#2ecc71', '#f39c12', '#e74c3c'],
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const total = {{ global_kpis.total_satisfying + global_kpis.total_doubtful + global_kpis.total_unsatisfying }};
+              return `${ctx.label}: ${ctx.raw} (${total > 0 ? (ctx.raw/total*100).toFixed(1) : 0}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+})();
+
+{% endif %}
+</script>
+{% endblock %}

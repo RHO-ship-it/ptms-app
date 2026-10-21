@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Campagne créée{% endblock %}
+{% block content %}
+<div class="alert alert-success">
+    <i class="bi bi-check-circle-fill"></i> La campagne <strong>{{ result.campaign_reference }}</strong> a été créée avec succès !
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="card card-kpi p-3 text-center"><div class="text-muted small">Essais créés</div><div class="fs-3 fw-bold">{{ result.nb_trials }}</div></div></div>
+    <div class="col-md-4"><div class="card card-kpi p-3 text-center"><div class="text-muted small">Laboratoires rattachés</div><div class="fs-3 fw-bold">{{ result.nb_labs }}</div></div></div>
+    <div class="col-md-4"><div class="card card-kpi p-3 text-center"><div class="text-muted small">Formulaires générés</div><div class="fs-3 fw-bold">{{ result.nb_forms }}</div></div></div>
+</div>
+
+{% if result.accounts %}
+<div class="card card-kpi p-3 mb-3">
+    <h5>Comptes participants créés</h5>
+    <p class="text-muted small">Communiquez ces identifiants aux laboratoires concernés (mot de passe temporaire à changer à la première connexion).</p>
+    <table class="table table-sm">
+        <thead><tr><th>Laboratoire</th><th>Nom d'utilisateur</th><th>Mot de passe temporaire</th></tr></thead>
+        <tbody>
+        {% for acc in result.accounts %}
+            <tr><td>{{ acc.lab }}</td><td><code>{{ acc.username }}</code></td><td><code>{{ acc.password }}</code></td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<a href="{{ url_for('campaigns.view_campaign', campaign_id=result.campaign_id) }}" class="btn btn-primary">Voir la campagne</a>
+<a href="{{ url_for('dashboard.index') }}" class="btn btn-outline-secondary">Retour au tableau de bord</a>
+{% endblock %}

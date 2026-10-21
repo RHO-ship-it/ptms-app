@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Ajout du lien dans le menu Mon Compte du portail -->
+        <template id="portal_my_home_menu_ptms" name="Portal layout : PTMS results menu entries" inherit_id="portal.portal_breadcrumbs" priority="20">
+            <xpath expr="//ol[hasclass('o_portal_submenu')]" position="inside">
+                <li t-if="page_name == 'ptms_result' or result" t-attf-class="breadcrumb-item #{'active ' if not result else ''}">
+                    <a t-if="result" t-attf-href="/my/ptms/results?{{ keep_query() }}">Mes Résultats PTMS</a>
+                    <t t-else="">Mes Résultats PTMS</t>
+                </li>
+                <li t-if="result" class="breadcrumb-item active">
+                    <t t-esc="result.trial_id.name"/>
+                </li>
+            </xpath>
+        </template>
+
+        <template id="portal_my_home_ptms" name="Show PTMS Results" inherit_id="portal.portal_my_home" priority="20">
+            <xpath expr="//div[hasclass('o_portal_docs')]" position="inside">
+                <t t-call="portal.portal_docs_entry">
+                    <t t-set="title">Résultats PTMS</t>
+                    <t t-set="url" t-value="'/my/ptms/results'"/>
+                    <t t-set="placeholder_count" t-value="'ptms_result_count'"/>
+                </t>
+            </xpath>
+        </template>
+
+        <!-- Liste des résultats -->
+        <template id="portal_my_ptms_results" name="My PTMS Results">
+            <t t-call="portal.portal_layout">
+                <t t-if="not results">
+                    <p>Vous n'avez aucun résultat d'essai en cours.</p>
+                </t>
+                <t t-if="results" t-call="portal.portal_table">
+                    <thead>
+                        <tr class="active">
+                            <th>Campagne</th>
+                            <th>Essai</th>
+                            <th>Valeur Soumise</th>
+                            <th>Z-Score</th>
+                            <th>Évaluation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr t-foreach="results" t-as="res">
+                            <td><span t-field="res.trial_id.campaign_id.name"/></td>
+                            <td>
+                                <a t-attf-href="/my/ptms/result/#{res.id}"><span t-field="res.trial_id.name"/></a>
+                            </td>
+                            <td><span t-field="res.value_submitted"/></td>
+                            <td><span t-field="res.z_score"/></td>
+                            <td>
+                                <span t-if="res.evaluation == 'satisfactory'" class="badge text-bg-success">Satisfaisant</span>
+                                <span t-if="res.evaluation == 'questionable'" class="badge text-bg-warning">Discutable</span>
+                                <span t-if="res.evaluation == 'unsatisfactory'" class="badge text-bg-danger">Non Satisfaisant</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </t>
+            </t>
+        </template>
+
+        <!-- Détail et Formulaire de saisie -->
+        <template id="portal_ptms_result_detail" name="PTMS Result Detail">
+            <t t-call="portal.portal_layout">
+                <div class="card mt-4">
+                    <div class="card-header bg-light">
+                        <h4>Soumission de Résultat: <span t-field="result.trial_id.name"/></h4>
+                    </div>
+                    <div class="card-body">
+                        <t t-if="result.trial_id.campaign_id.state == 'active'">
+                            <form t-attf-action="/my/ptms/result/#{result.id}/submit" method="post">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                
+                                <div class="mb-3">
+                                    <label for="value_submitted" class="form-label">Valeur (<span t-field="result.trial_id.unit"/>)</label>
+                                    <input type="number" step="any" name="value_submitted" id="value_submitted" class="form-control" t-att-value="result.value_submitted" required="1"/>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="method_used" class="form-label">Méthode Utilisée</label>
+                                    <input type="text" name="method_used" id="method_used" class="form-control" t-att-value="result.method_used"/>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="equipment_used" class="form-label">Équipement</label>
+                                    <input type="text" name="equipment_used" id="equipment_used" class="form-control" t-att-value="result.equipment_used"/>
+                                </div>
+                                <button type="submit" class="btn btn-primary">Enregistrer le Résultat</button>
+                            </form>
+                        </t>
+                        <t t-else="">
+                            <div class="alert alert-info">
+                                La campagne est clôturée ou n'est pas encore active. Vous ne pouvez plus modifier vos résultats.
+                            </div>
+                            <p><strong>Valeur soumise :</strong> <span t-field="result.value_submitted"/> <span t-field="result.trial_id.unit"/></p>
+                            <p><strong>Z-Score :</strong> <span t-field="result.z_score"/></p>
+                        </t>
+                    </div>
+                </div>
+            </t>
+        </template>
+    </data>
+</odoo>

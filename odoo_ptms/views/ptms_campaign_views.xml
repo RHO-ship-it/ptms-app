@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Form View -->
+        <record id="view_ptms_campaign_form" model="ir.ui.view">
+            <field name="name">ptms.campaign.form</field>
+            <field name="model">ptms.campaign</field>
+            <field name="arch" type="xml">
+                <form string="Campagne PTMS">
+                    <header>
+                        <field name="state" widget="statusbar" statusbar_visible="draft,active,closed"/>
+                    </header>
+                    <sheet>
+                        <div class="oe_title">
+                            <h1>
+                                <field name="reference" placeholder="Référence (ex: PTMS-2026-01)"/>
+                            </h1>
+                            <h2>
+                                <field name="name" placeholder="Nom de la Campagne"/>
+                            </h2>
+                        </div>
+                        <group>
+                            <group>
+                                <field name="date_start"/>
+                                <field name="date_end"/>
+                            </group>
+                        </group>
+                        <notebook>
+                            <page string="Essais" name="trials">
+                                <field name="trial_ids">
+                                    <tree string="Essais">
+                                        <field name="name"/>
+                                        <field name="parameter"/>
+                                        <field name="unit"/>
+                                        <field name="assigned_value"/>
+                                    </tree>
+                                </field>
+                            </page>
+                            <page string="Description" name="description">
+                                <field name="description"/>
+                            </page>
+                        </notebook>
+                    </sheet>
+                    <div class="oe_chatter">
+                        <field name="message_follower_ids"/>
+                        <field name="activity_ids"/>
+                        <field name="message_ids"/>
+                    </div>
+                </form>
+            </field>
+        </record>
+
+        <!-- Tree View -->
+        <record id="view_ptms_campaign_tree" model="ir.ui.view">
+            <field name="name">ptms.campaign.tree</field>
+            <field name="model">ptms.campaign</field>
+            <field name="arch" type="xml">
+                <tree string="Campagnes PTMS">
+                    <field name="reference"/>
+                    <field name="name"/>
+                    <field name="date_start"/>
+                    <field name="date_end"/>
+                    <field name="state"/>
+                </tree>
+            </field>
+        </record>
+
+        <!-- Action -->
+        <record id="action_ptms_campaign" model="ir.actions.act_window">
+            <field name="name">Campagnes</field>
+            <field name="res_model">ptms.campaign</field>
+            <field name="view_mode">tree,form</field>
+        </record>
+    </data>
+</odoo>

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="view_partner_form_ptms_inherit" model="ir.ui.view">
+            <field name="name">res.partner.form.ptms.inherit</field>
+            <field name="model">res.partner</field>
+            <field name="inherit_id" ref="base.view_partner_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//page[@name='internal_notes']" position="after">
+                    <page name="ptms" string="PTMS - Laboratoire" invisible="not is_laboratory">
+                        <group>
+                            <field name="is_laboratory"/>
+                            <field name="lab_code"/>
+                        </group>
+                        <field name="ptms_result_ids" readonly="1">
+                            <tree>
+                                <field name="trial_id"/>
+                                <field name="value_submitted"/>
+                                <field name="z_score"/>
+                                <field name="evaluation"/>
+                            </tree>
+                        </field>
+                    </page>
+                </xpath>
+                <xpath expr="//field[@name='category_id']" position="after">
+                     <field name="is_laboratory" widget="boolean_toggle"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- Action pour afficher uniquement les laboratoires -->
+        <record id="action_ptms_laboratories" model="ir.actions.act_window">
+            <field name="name">Laboratoires</field>
+            <field name="res_model">res.partner</field>
+            <field name="view_mode">kanban,tree,form</field>
+            <field name="domain">[('is_laboratory', '=', True)]</field>
+            <field name="context">{'default_is_laboratory': True}</field>
+        </record>
+    </data>
+</odoo>

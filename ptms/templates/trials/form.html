@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Modifier' if trial else 'Nouvel' }} essai{% endblock %}
+{% block content %}
+<h3 class="mb-4"><i class="bi bi-flask"></i> {{ 'Modifier l\'essai' if trial else 'Nouvel essai' }} — {{ campaign.reference }}</h3>
+<div class="card card-kpi p-4" style="max-width:600px;">
+    <form method="POST">
+        <div class="mb-3">
+            <label class="form-label">Nom de l'essai</label>
+            <input type="text" class="form-control" name="name" value="{{ trial.name if trial else '' }}" required>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Type d'essai</label>
+                <select class="form-select" name="trial_type">
+                    <option value="quantitative" {{ 'selected' if trial and trial.trial_type=='quantitative' }}>Quantitatif</option>
+                    <option value="qualitative" {{ 'selected' if trial and trial.trial_type=='qualitative' }}>Qualitatif</option>
+                    <option value="solidite" {{ 'selected' if trial and trial.trial_type=='solidite' }}>Solidité</option>
+                </select>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Référence de l'échantillon</label>
+                <input type="text" class="form-control" name="sample_reference" value="{{ trial.sample_reference if trial else '' }}">
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Paramètre</label>
+            <input type="text" class="form-control" name="parameter" value="{{ trial.parameter if trial else '' }}">
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Unité</label>
+                <input type="text" class="form-control" name="unit" value="{{ trial.unit if trial else '' }}">
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Méthode</label>
+                <input type="text" class="form-control" name="method" value="{{ trial.method if trial else '' }}">
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Valeur assignée (X)</label>
+                <input type="number" step="any" class="form-control" name="target_value" value="{{ trial.target_value if trial and trial.target_value is not none else '' }}">
+                <span class="form-text">Essais quantitatifs</span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Écart-type (sigma)</label>
+                <input type="number" step="any" class="form-control" name="target_sd" value="{{ trial.target_sd if trial and trial.target_sd is not none else '' }}">
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Résultat attendu (essais qualitatifs / solidité)</label>
+            <input type="text" class="form-control" name="expected_qualitative_result" value="{{ trial.expected_qualitative_result if trial and trial.expected_qualitative_result else '' }}" placeholder="ex: Conforme">
+        </div>
+
+        <hr>
+        <h6 class="text-muted">Traçabilité de σpt et ISO 17043 (essais quantitatifs)</h6>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Méthode de détermination de σpt</label>
+                <select class="form-select" name="sigma_pt_method">
+                    <option value="fixe" {{ 'selected' if trial and trial.sigma_pt_method=='fixe' }}>Valeur fixe (expérience / fitness for purpose)</option>
+                    <option value="horwitz" {{ 'selected' if trial and trial.sigma_pt_method=='horwitz' }}>Équation de Horwitz</option>
+                    <option value="robuste" {{ 'selected' if trial and trial.sigma_pt_method=='robuste' }}>Écart-type robuste des résultats (Algorithme A / MADe)</option>
+                </select>
+                <span class="form-text">Si « Horwitz », renseignez la concentration ci-dessous : σpt (écart-type) sera recalculé automatiquement à partir de la valeur assignée.</span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Concentration (fraction massique, pour Horwitz)</label>
+                <input type="number" step="any" class="form-control" name="horwitz_concentration" placeholder="ex: 0.000001 pour 1 mg/kg">
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Incertitude de la valeur assignée U(X_ref)</label>
+                <input type="number" step="any" class="form-control" name="reference_uncertainty" value="{{ trial.reference_uncertainty if trial and trial.reference_uncertainty is not none else '' }}">
+                <span class="form-text">Utilisée avec l'incertitude déclarée par chaque labo pour calculer le nombre En (ISO 13528 §9.3).</span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Nombre minimal de participants (ISO 17043 §7.4)</label>
+                <input type="number" class="form-control" name="min_participants" value="{{ trial.min_participants if trial and trial.min_participants is not none else '' }}">
+            </div>
+        </div>
+        {% if trial and trial.sigma_pt_traceability %}
+        <div class="alert alert-light border small">{{ trial.sigma_pt_traceability }}</div>
+        {% endif %}
+        <div class="mb-3">
+            <label class="form-label">Date d'échéance</label>
+            <input type="date" class="form-control" name="due_date" value="{{ trial.due_date if trial and trial.due_date else '' }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+        <a href="{{ url_for('trials.list_trials', campaign_id=campaign.id) }}" class="btn btn-outline-secondary">Annuler</a>
+    </form>
+</div>
+{% endblock %}
