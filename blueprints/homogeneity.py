@@ -382,13 +382,8 @@ def _pdf_symbol_text(c, x, y, text, size=10, font='Helvetica', color=None):
     return x
 
 
-def _render_study_pdf(trial, kind):
-    """Génère un PDF de l’étude FTE 006 sans ajouter de police externe au dépôt."""
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import mm
-    from reportlab.pdfgen import canvas
-
+def _study_payload(trial, kind):
+    """Charge les données d'une étude FTE 006 sous le bon format pour export PDF/Excel."""
     record = HomogeneityStudy.query.filter_by(trial_id=trial.id, kind=kind).first()
     if kind == "quantitative":
         stored = json.loads(record.inputs) if record and record.inputs else None
@@ -414,6 +409,17 @@ def _render_study_pdf(trial, kind):
                 else:
                     inputs[key] = value
         res = hs.evaluate_solidity(inputs)
+    return inputs, res
+
+
+def _render_study_pdf(trial, kind):
+    """Génère un PDF de l’étude FTE 006 sans ajouter de police externe au dépôt."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.pdfgen import canvas
+
+    inputs, res = _study_payload(trial, kind)
 
     buffer = __import__("io").BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
@@ -508,6 +514,112 @@ def _render_study_pdf(trial, kind):
     return buffer.getvalue()
 
 
+def _render_study_excel(trial, kind):
+    """Génère un classeur Excel avec les données saisies et le résumé de l’étude."""
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    inputs, res = _study_payload(trial, kind)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Synthèse"
+    header_fill = PatternFill("solid", fgColor="D9EAF7")
+    title_font = Font(bold=True, color="1F1F1F")
+
+    def cell(v, row, col):
+        ws.cell(row=row, column=col, value=v)
+
+    row = 1
+    ws.append(["Étude FTE 006", trial.name])
+    ws.append(["Type", "Quantitatif" if kind == "quantitative" else "Qualitatif ordinal" if kind == "ordinal" else "Solidité"])
+    ws.append(["Campagne", trial.campaign.reference if trial.campaign else ""])
+    ws.append(["Méthode", getattr(trial, "method", "") or trial.name])
+    ws.append(["Généré le", datetime.utcnow().strftime("%d/%m/%Y %H:%M")])
+    ws.append([])
+
+    if kind == "quantitative":
+        summary = {
+            "σpt": res.get("sigma_pt"),
+            "Moyenne générale x̿": res.get("hom", {}).get("xbar2"),
+            "Sr": res.get("hom", {}).get("sr"),
+            "Ss": res.get("hom", {}).get("ss"),
+            "F1": res.get("hom", {}).get("f1"),
+            "F2": res.get("hom", {}).get("f2"),
+            "Conclusion": (res.get("conclusion") or {}).get("text"),
+        }
+        for key, value in summary.items():
+            ws.append([key, value])
+        ws.append([])
+        ws.append(["Homogénéité — résultats"])
+        ws.append(["Échantillon", "Résultat 1", "Résultat 2"])
+        for i, row_values in enumerate(inputs["hom"]["rows"]):
+            if any(v is not None for v in row_values):
+                ws.append([f"HO {i + 1:03d}", row_values[0] if len(row_values) > 0 else "", row_values[1] if len(row_values) > 1 else ""])
+        ws.append([])
+        ws.append(["Stabilité — fin de l’essai d’aptitude"])
+        ws.append(["Échantillon", "Résultat 1", "Résultat 2"])
+        for i, row_values in enumerate(inputs["stab_end"]["rows"]):
+            if any(v is not None for v in row_values):
+                ws.append([f"Stab {i + 1}", row_values[0] if len(row_values) > 0 else "", row_values[1] if len(row_values) > 1 else ""])
+    elif kind == "ordinal":
+        summary = {
+            "Base": inputs.get("basis"),
+            "Tolérance": inputs.get("tolerance"),
+            "Valeur de référence": res.get("reference"),
+            "Décision homogénéité": (res.get("hom") or {}).get("text"),
+            "Décision stabilité": (res.get("stab_end") or {}).get("text"),
+            "Conclusion": (res.get("conclusion") or {}).get("text"),
+        }
+        for key, value in summary.items():
+            ws.append([key, value])
+        ws.append([])
+        ws.append(["Homogénéité — résultats"])
+        ws.append(["Échantillon", "Résultat 1", "Résultat 2"])
+        for i, row_values in enumerate(inputs["hom"]["rows"]):
+            if any(v is not None for v in row_values):
+                ws.append([f"HO {i + 1:03d}", row_values[0] if len(row_values) > 0 else "", row_values[1] if len(row_values) > 1 else ""])
+        ws.append([])
+        ws.append(["Stabilité — fin de l’essai d’aptitude"])
+        ws.append(["Échantillon", "Résultat 1", "Résultat 2"])
+        for i, row_values in enumerate(inputs["stab_end"]["rows"]):
+            if any(v is not None for v in row_values):
+                ws.append([f"Stab {i + 1}", row_values[0] if len(row_values) > 0 else "", row_values[1] if len(row_values) > 1 else ""])
+    else:
+        summary = {
+            "Base": inputs.get("basis"),
+            "Tolérance": inputs.get("tolerance"),
+            "Conclusion": (res.get("conclusion") or {}).get("text"),
+        }
+        for key, value in summary.items():
+            ws.append([key, value])
+        ws.append([])
+        ws.append(["Paramètres", "Décision homogénéité", "Décision stabilité", "Texte"])
+        for item in res.get("params") or []:
+            if not item:
+                continue
+            ws.append([item.get("name"), (item.get("hom") or {}).get("text"), (item.get("stability") or {}).get("text"), item.get("text")])
+
+    for row_idx in range(1, ws.max_row + 1):
+        for col_idx in range(1, ws.max_column + 1):
+            cell_obj = ws.cell(row=row_idx, column=col_idx)
+            if row_idx == 1:
+                cell_obj.font = title_font
+            if row_idx in (6, 12, 20, 24):
+                cell_obj.fill = header_fill
+            if row_idx >= 1 and col_idx == 1:
+                cell_obj.font = Font(bold=True)
+            if cell_obj.value is None:
+                cell_obj.value = ""
+            cell_obj.alignment = Alignment(vertical="top", wrap_text=True)
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 @homogeneity_bp.route("/trial/<int:trial_id>/study-pdf")
 @login_required
 @roles_required(*STUDY_ROLES)
@@ -526,6 +638,26 @@ def study_pdf(trial_id):
     pdf = _render_study_pdf(trial, kind)
     filename = f"FTE_006_{trial.trial_type}_{trial.campaign.reference if trial.campaign else 'campagne'}_{trial.name}.pdf".replace("/", "-")
     return send_file(__import__("io").BytesIO(pdf), mimetype="application/pdf", as_attachment=True, download_name=filename)
+
+
+@homogeneity_bp.route("/trial/<int:trial_id>/study-excel")
+@login_required
+@roles_required(*STUDY_ROLES)
+def study_excel(trial_id):
+    """Télécharge le classeur Excel complet de l’étude FTE 006 pour l’essai courant."""
+    trial = Trial.query.get_or_404(trial_id)
+    if trial.trial_type == "quantitative":
+        kind = "quantitative"
+    elif trial.trial_type == "qualitative":
+        kind = "ordinal"
+    elif trial.trial_type == "solidite":
+        kind = "solidity"
+    else:
+        flash("Type d’essai non pris en charge pour l’export Excel.", "warning")
+        return redirect(url_for("homogeneity.assess", trial_id=trial.id))
+    xlsx = _render_study_excel(trial, kind)
+    filename = f"FTE_006_{trial.trial_type}_{trial.campaign.reference if trial.campaign else 'campagne'}_{trial.name}.xlsx".replace("/", "-")
+    return send_file(__import__("io").BytesIO(xlsx), mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", as_attachment=True, download_name=filename)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
