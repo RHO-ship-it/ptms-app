@@ -37,7 +37,23 @@
 
   {% with docs_title="Catalogue général" %}{% include "catalogue/_documents.html" %}{% endwith %}
   {% with documents=registrations, docs_title="Registration sheets (Textile, Cuir, Huile d'olive)" %}{% include "catalogue/_documents.html" %}{% endwith %}
-  {% with documents=terms, docs_title="Conditions générales de vente / Terms and conditions of sale" %}{% include "catalogue/_documents.html" %}{% endwith %}
+  <div id="terms" class="pt-2">
+    <div class="card shadow-sm mb-4" style="border-radius:14px;">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+          <h6 class="fw-bold mb-0"><i class="bi bi-file-earmark-text-fill text-danger me-2"></i>Conditions générales de vente / Terms and conditions of sale</h6>
+          {% if terms %}
+            <span class="badge text-bg-success">{{ terms|length }} document{% if terms|length > 1 %}s{% endif %}</span>
+          {% endif %}
+        </div>
+        {% if terms %}
+          {% with documents=terms, docs_title="" %}{% include "catalogue/_documents.html" %}{% endwith %}
+        {% else %}
+          <p class="mb-0 text-muted">Aucun document n’est actuellement publié. Le PDF pourra être ajouté depuis l’interface d’administration.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
 
   <div class="mb-4" style="max-width:520px;">
     <div class="input-group"><span class="input-group-text"><i class="bi bi-search"></i></span>
