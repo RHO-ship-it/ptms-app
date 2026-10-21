@@ -1,7 +1,10 @@
+import os
 from datetime import datetime
+from pathlib import Path
 
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+from flask import Blueprint, render_template, redirect, url_for, request, flash, send_from_directory, current_app, abort
 from flask_login import login_required, current_user
+from werkzeug.utils import secure_filename
 
 from extensions import db
 from models import Campaign, Trial, CampaignLaboratory, ParticipantForm, Laboratory
@@ -73,6 +76,50 @@ def edit_campaign(campaign_id):
         flash("Campagne mise à jour.", "success")
         return redirect(url_for("campaigns.view_campaign", campaign_id=campaign.id))
     return render_template("campaigns/form.html", campaign=campaign)
+
+
+@campaigns_bp.route("/<int:campaign_id>/upload-report/<kind>", methods=["POST"])
+@login_required
+@roles_required("admin", "chef_technique")
+def upload_report_document(campaign_id, kind):
+    if kind not in {"draft", "final"}:
+        abort(404)
+    campaign = Campaign.query.get_or_404(campaign_id)
+    upload = request.files.get("report_file")
+    if not upload or not upload.filename:
+        flash("Veuillez sélectionner un fichier à importer.", "warning")
+        return redirect(url_for("campaigns.view_campaign", campaign_id=campaign.id))
+
+    storage_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "campaign_reports" / str(campaign.id)
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    extension = os.path.splitext(secure_filename(upload.filename))[1] or ".pdf"
+    target_name = f"{kind}_report{extension}"
+    target_path = storage_dir / target_name
+    upload.save(target_path)
+
+    relative_path = str(target_path.relative_to(Path(current_app.config["UPLOAD_FOLDER"])))
+    if kind == "draft":
+        campaign.draft_report_path = relative_path
+    else:
+        campaign.final_report_path = relative_path
+    db.session.commit()
+    log_action("upload", "Campaign", campaign.id, f"Import du rapport {kind} pour {campaign.reference}")
+    flash(f"La dernière mise à jour {kind} a été enregistrée.", "success")
+    return redirect(url_for("campaigns.view_campaign", campaign_id=campaign.id))
+
+
+@campaigns_bp.route("/<int:campaign_id>/download-report/<kind>")
+@login_required
+@roles_required("admin", "chef_technique", "auditeur")
+def download_report_document(campaign_id, kind):
+    if kind not in {"draft", "final"}:
+        abort(404)
+    campaign = Campaign.query.get_or_404(campaign_id)
+    rel_path = getattr(campaign, f"{kind}_report_path")
+    if not rel_path:
+        abort(404)
+    return send_from_directory(current_app.config["UPLOAD_FOLDER"], rel_path, as_attachment=True,
+                               download_name=os.path.basename(rel_path))
 
 
 @campaigns_bp.route("/<int:campaign_id>/activate", methods=["POST"])

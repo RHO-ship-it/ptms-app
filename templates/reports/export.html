@@ -1,80 +1,173 @@
 {% extends "base.html" %}
 {% block title %}Rapports{% endblock %}
+
+{% block extra_style %}
+<style>
+  .report-shell { display:grid; gap:1.25rem; }
+  .report-summary {
+    display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:1rem;
+  }
+  .report-summary .card {
+    border:1px solid #e2e8f0; border-radius:16px; background:linear-gradient(135deg,#fff,#f8fafc);
+    box-shadow:0 8px 24px rgba(15,23,42,.04);
+  }
+  .report-summary .card-body { padding:1rem 1.1rem; }
+  .report-kpi-label { font-size:.75rem; letter-spacing:.06em; text-transform:uppercase; color:#64748b; }
+  .report-kpi-value { font-size:2rem; font-weight:800; letter-spacing:-.04em; }
+  .report-panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; overflow:hidden; }
+  .report-panel .panel-head { padding:1rem 1.2rem; border-bottom:1px solid #edf2f7; background:linear-gradient(180deg,#f8fbff,#fff); }
+  .report-panel .panel-body { padding:1rem 1.2rem; }
+  .report-table td, .report-table th { vertical-align:middle; }
+  .report-badge {
+    display:inline-flex; align-items:center; gap:.35rem; border-radius:999px; font-size:.72rem; font-weight:700;
+    padding:.35rem .7rem; letter-spacing:.02em;
+  }
+  .report-badge.status-active { background:#dcfce7; color:#166534; }
+  .report-badge.status-closed { background:#e2e8f0; color:#334155; }
+  .report-badge.status-draft { background:#fef3c7; color:#92400e; }
+  .report-badge.status-published { background:#dbeafe; color:#1d4ed8; }
+  .report-actions { display:flex; flex-wrap:wrap; gap:.5rem; }
+  .report-actions .btn { white-space:nowrap; }
+  @media (max-width: 768px) {
+    .report-actions { flex-direction:column; align-items:stretch; }
+    .report-actions .btn { width:100%; justify-content:center; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<h3 class="mb-4"><i class="bi bi-file-earmark-arrow-down"></i> Générateur de rapports</h3>
+<div class="report-shell">
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h3 class="mb-1"><i class="bi bi-file-earmark-arrow-down text-primary me-2"></i> Générateur de rapports</h3>
+      <p class="text-muted mb-0">Synthèse des campagnes, exports et rapports finalisés.</p>
+    </div>
+    <div class="small text-muted">
+      <i class="bi bi-clock-history me-1"></i>{{ campaigns|length }} campagne(s)
+    </div>
+  </div>
 
-<div class="card card-kpi p-3 mb-3">
-    <h5 class="mb-2">Export brut (résultats + z-score)</h5>
-    <table class="table table-hover">
-        <thead><tr><th>Référence</th><th>Nom</th><th>Statut</th><th>Export</th></tr></thead>
-        <tbody>
-        {% for c in campaigns %}
-            <tr>
-                <td>{{ c.reference }}</td>
-                <td>{{ c.name }}</td>
-                <td><span class="badge bg-{{ 'success' if c.status=='active' else ('secondary' if c.status=='draft' else 'dark') }}">{{ c.status }}</span></td>
-                <td class="d-flex gap-2">
-                    <a href="{{ url_for('reports.export_campaign', campaign_id=c.id, fmt='excel') }}" class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-excel"></i> Excel</a>
-                    <a href="{{ url_for('reports.export_campaign', campaign_id=c.id, fmt='pdf') }}" class="btn btn-sm btn-outline-danger"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
-                    <a href="{{ url_for('reports.export_campaign', campaign_id=c.id, fmt='word') }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-file-earmark-word"></i> Word</a>
-                </td>
-            </tr>
-        {% else %}
-            <tr><td colspan="4" class="text-center text-muted">Aucune campagne disponible.</td></tr>
-        {% endfor %}
-        </tbody>
-    </table>
-</div>
+  <div class="report-summary">
+    <div class="card">
+      <div class="card-body">
+        <div class="report-kpi-label">Total</div>
+        <div class="report-kpi-value text-primary">{{ summary.total }}</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <div class="report-kpi-label">Actives</div>
+        <div class="report-kpi-value text-success">{{ summary.active }}</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <div class="report-kpi-label">Clôturées</div>
+        <div class="report-kpi-value text-secondary">{{ summary.closed }}</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <div class="report-kpi-label">Rapports publiés</div>
+        <div class="report-kpi-value text-info">{{ summary.published }}</div>
+      </div>
+    </div>
+  </div>
 
-<div class="card card-kpi p-3 mb-3">
-    <h5 class="mb-2">Export vers les modèles internes FTE</h5>
-    <p class="text-muted small mb-3">
+  <div class="report-panel">
+    <div class="panel-head d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <h5 class="mb-0"><i class="bi bi-file-earmark-spreadsheet me-2"></i>Export vers les modèles internes FTE</h5>
+      <div class="d-flex align-items-center gap-2">
+        <label for="campaign-filter" class="small text-muted mb-0">Filtrer par campagne</label>
+        <select id="campaign-filter" class="form-select form-select-sm" style="min-width:220px;">
+          <option value="all">Toutes les campagnes</option>
+          {% for c in campaigns %}
+          <option value="{{ c.reference }}">{{ c.reference }} — {{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="panel-body">
+      <p class="text-muted small mb-3">
         Génère un classeur avec un onglet par essai, dans une structure proche de vos modèles
         FTE_004 (qualitatif) / FTE_008 (quantitatif). Les colonnes non disponibles dans PTMS
-        (accréditation, instrument, température/humidité, réplicats détaillés...) sont laissées
-        vides pour complément manuel.
-    </p>
-    <table class="table table-hover">
-        <thead><tr><th>Référence</th><th>Nom</th><th>Export</th></tr></thead>
-        <tbody>
-        {% for c in campaigns %}
-            <tr>
-                <td>{{ c.reference }}</td>
-                <td>{{ c.name }}</td>
-                <td class="d-flex gap-2">
-                    <a href="{{ url_for('reports.export_fte', campaign_id=c.id, template='fte004') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-spreadsheet"></i> FTE_004 (qualitatif)</a>
-                    <a href="{{ url_for('reports.export_fte', campaign_id=c.id, template='fte008') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-spreadsheet"></i> FTE_008 (quantitatif)</a>
-                </td>
-            </tr>
-        {% else %}
-            <tr><td colspan="3" class="text-center text-muted">Aucune campagne disponible.</td></tr>
-        {% endfor %}
-        </tbody>
-    </table>
-</div>
+        sont laissées vides pour complément manuel.
+      </p>
+      <div class="mb-3 d-flex flex-wrap gap-2">
+        <a href="{{ url_for('reports.fte_template_download', template='fte004') }}" class="btn btn-sm btn-outline-dark"><i class="bi bi-download"></i> Télécharger le gabarit FTE_004</a>
+        <a href="{{ url_for('reports.fte_template_download', template='fte008') }}" class="btn btn-sm btn-outline-dark"><i class="bi bi-download"></i> Télécharger le gabarit FTE_008</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover report-table mb-0">
+          <thead><tr><th>Référence</th><th>Nom</th><th>Export</th></tr></thead>
+          <tbody>
+          {% for c in campaigns %}
+              <tr class="report-filter-row" data-campaign="{{ c.reference }}">
+                  <td>{{ c.reference }}</td>
+                  <td>{{ c.name }}</td>
+                  <td>
+                    <div class="report-actions">
+                        <a href="{{ url_for('reports.export_fte', campaign_id=c.id, template='fte004') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-spreadsheet"></i> FTE_004</a>
+                        <a href="{{ url_for('reports.export_fte', campaign_id=c.id, template='fte008') }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-spreadsheet"></i> FTE_008</a>
+                    </div>
+                  </td>
+              </tr>
+          {% else %}
+              <tr><td colspan="3" class="text-center text-muted py-4">Aucune campagne disponible.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
-<div class="card card-kpi p-3">
-    <h5 class="mb-2">Rapport final complet (structure type TTS)</h5>
-    <p class="text-muted small mb-3">
+  <div class="report-panel mb-4">
+    <div class="panel-head">
+      <h5 class="mb-0"><i class="bi bi-file-earmark-word me-2"></i>Rapport final complet (structure type TTS)</h5>
+    </div>
+    <div class="panel-body">
+      <p class="text-muted small mb-3">
         Document Word éditable reprenant la structure d'un rapport d'essais d'aptitude
         (portée, confidentialité, paramètres demandés, calendrier, participants, statistiques
         par essai, synthèse de performance, recommandations, conclusion).
-    </p>
-    <table class="table table-hover">
-        <thead><tr><th>Référence</th><th>Nom</th><th>Export</th></tr></thead>
-        <tbody>
-        {% for c in campaigns %}
-            <tr>
-                <td>{{ c.reference }}</td>
-                <td>{{ c.name }}</td>
-                <td>
-                    <a href="{{ url_for('reports.export_full_report_word', campaign_id=c.id) }}" class="btn btn-sm btn-primary"><i class="bi bi-file-earmark-word"></i> Rapport complet (Word)</a>
-                </td>
-            </tr>
-        {% else %}
-            <tr><td colspan="3" class="text-center text-muted">Aucune campagne disponible.</td></tr>
-        {% endfor %}
-        </tbody>
-    </table>
+      </p>
+      <div class="table-responsive">
+        <table class="table table-hover report-table mb-0">
+          <thead><tr><th>Référence</th><th>Nom</th><th>Export</th></tr></thead>
+          <tbody>
+          {% for c in campaigns %}
+              <tr class="report-filter-row" data-campaign="{{ c.reference }}">
+                  <td>{{ c.reference }}</td>
+                  <td>{{ c.name }}</td>
+                  <td>
+                      <a href="{{ url_for('reports.export_full_report_word', campaign_id=c.id) }}" class="btn btn-sm btn-primary"><i class="bi bi-file-earmark-word"></i> Rapport complet (Word)</a>
+                  </td>
+              </tr>
+          {% else %}
+              <tr><td colspan="3" class="text-center text-muted py-4">Aucune campagne disponible.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    const filter = document.getElementById('campaign-filter');
+    if (!filter) return;
+    const apply = function () {
+      const value = filter.value;
+      document.querySelectorAll('.report-filter-row').forEach(function (row) {
+        const visible = !value || value === 'all' || row.dataset.campaign === value;
+        row.style.display = visible ? '' : 'none';
+      });
+    };
+    filter.addEventListener('change', apply);
+    apply();
+  })();
+</script>
 {% endblock %}

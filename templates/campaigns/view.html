@@ -134,6 +134,56 @@
     </div>
 </div>
 
+{% set can_manage_reports = current_user.role in ['admin','chef_technique'] %}
+{% set can_view_report_updates = current_user.role in ['admin','chef_technique','auditeur'] %}
+
+{% if can_view_report_updates %}
+<div class="ptms-card mb-4">
+    <div class="ptms-card-header">
+        <i class="bi bi-file-earmark-arrow-up text-primary" style="font-size:17px;"></i>
+        <span class="ptms-card-title">Mises à jour du rapport</span>
+    </div>
+    <div class="ptms-card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="border rounded-3 p-3 h-100 bg-light-subtle">
+                    <div class="fw-bold mb-2"><i class="bi bi-pencil-square me-2"></i>Dernière mise à jour draft</div>
+                    {% if campaign.draft_report_path %}
+                    <div class="small text-muted mb-2">Fichier actuel : {{ campaign.draft_report_path.split('/')[-1] }}</div>
+                    <a href="{{ url_for('campaigns.download_report_document', campaign_id=campaign.id, kind='draft') }}" class="ptms-btn ptms-btn-outline ptms-btn-sm mb-3"><i class="bi bi-download"></i> Télécharger</a>
+                    {% else %}
+                    <div class="small text-muted mb-2">Aucun fichier importé.</div>
+                    {% endif %}
+                    {% if can_manage_reports %}
+                    <form method="POST" action="{{ url_for('campaigns.upload_report_document', campaign_id=campaign.id, kind='draft') }}" enctype="multipart/form-data">
+                        <input type="file" name="report_file" class="form-control form-control-sm mb-2" accept=".doc,.docx,.pdf,.xlsx,.xls">
+                        <button type="submit" class="ptms-btn ptms-btn-primary ptms-btn-sm"><i class="bi bi-upload"></i> Importer</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="border rounded-3 p-3 h-100 bg-light-subtle">
+                    <div class="fw-bold mb-2"><i class="bi bi-check2-circle me-2"></i>Dernière mise à jour final</div>
+                    {% if campaign.final_report_path %}
+                    <div class="small text-muted mb-2">Fichier actuel : {{ campaign.final_report_path.split('/')[-1] }}</div>
+                    <a href="{{ url_for('campaigns.download_report_document', campaign_id=campaign.id, kind='final') }}" class="ptms-btn ptms-btn-outline ptms-btn-sm mb-3"><i class="bi bi-download"></i> Télécharger</a>
+                    {% else %}
+                    <div class="small text-muted mb-2">Aucun fichier importé.</div>
+                    {% endif %}
+                    {% if can_manage_reports %}
+                    <form method="POST" action="{{ url_for('campaigns.upload_report_document', campaign_id=campaign.id, kind='final') }}" enctype="multipart/form-data">
+                        <input type="file" name="report_file" class="form-control form-control-sm mb-2" accept=".doc,.docx,.pdf,.xlsx,.xls">
+                        <button type="submit" class="ptms-btn ptms-btn-success ptms-btn-sm"><i class="bi bi-upload"></i> Importer</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="row g-4">
     <!-- Trials table -->
     <div class="col-lg-8">

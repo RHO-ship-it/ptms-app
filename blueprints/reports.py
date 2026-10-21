@@ -1,6 +1,7 @@
 import os
 import io
 from datetime import datetime
+from pathlib import Path
 
 from flask import Blueprint, render_template, request, send_file, current_app, flash, redirect, url_for, abort
 from flask_login import login_required, current_user
@@ -17,7 +18,13 @@ reports_bp = Blueprint("reports", __name__, template_folder="../templates/report
 @roles_required("admin", "chef_technique", "auditeur")
 def index():
     campaigns = Campaign.query.order_by(Campaign.created_at.desc()).all()
-    return render_template("reports/export.html", campaigns=campaigns)
+    summary = {
+        "total": len(campaigns),
+        "active": sum(1 for c in campaigns if c.status == "active"),
+        "closed": sum(1 for c in campaigns if c.status == "closed"),
+        "published": sum(1 for c in campaigns if c.report_published),
+    }
+    return render_template("reports/export.html", campaigns=campaigns, summary=summary)
 
 
 def _gather_report_rows(campaign):
@@ -108,6 +115,16 @@ def _lab_campaigns(lab):
             .distinct().order_by(Campaign.created_at.desc()).all())
 
 
+def _lab_forms(campaign, lab):
+    """Formulaires du laboratoire pour cette campagne, sans doublon par essai."""
+    out = []
+    for trial in campaign.trials:
+        for form in trial.forms:
+            if form.laboratory_id == lab.id:
+                out.append(form)
+    return out
+
+
 def _lab_submissions(campaign, lab):
     """Soumissions du laboratoire pour cette campagne, avec leur essai."""
     out = []
@@ -142,10 +159,11 @@ def my_reports_page():
     ongoing, completed, certificates = [], [], []
     if lab is not None:
         for campaign in _lab_campaigns(lab):
+            forms = _lab_forms(campaign, lab)
             subs = _lab_submissions(campaign, lab)
             item = {
                 "campaign": campaign,
-                "trials": len(campaign.trials),
+                "trials": len(forms),
                 "submitted": len(subs),
                 "has_uncertainty": any(
                     t.trial_type == "quantitative" and s.uncertainty is not None for t, s in subs),
@@ -375,6 +393,22 @@ def _uncertainty_pdf(campaign, lab, rows):
                      mimetype="application/pdf")
 
 
+@reports_bp.route("/fte-template/<template>")
+@login_required
+@roles_required("admin", "chef_technique", "auditeur")
+def fte_template_download(template):
+    """Télécharge le classeur Excel de base du modèle interne FTE."""
+    if template not in ("fte004", "fte008"):
+        flash("Modèle FTE inconnu.", "danger")
+        return redirect(url_for("reports.index"))
+    template_path = Path(current_app.config["EXPORT_FOLDER"]) / f"{template.upper()}_template.xlsx"
+    if not template_path.exists():
+        _ensure_fte_template(template)
+    return send_file(template_path, as_attachment=True,
+                     download_name=f"{template.upper()}_template.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
 @reports_bp.route("/campaign/<int:campaign_id>/export-fte/<template>")
 @login_required
 @roles_required("admin", "chef_technique", "auditeur")
@@ -543,6 +577,49 @@ def _export_word(campaign, rows):
 # Export vers les modèles internes FTE_004 (qualitatif) / FTE_008 (quantitatif)
 # ---------------------------------------------------------------------------
 
+def _ensure_fte_template(template):
+    """Crée un fichier Excel vierge à partir d'un modèle de base."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    wb = Workbook()
+    wb.remove(wb.active)
+
+    if template == "fte008":
+        headers = [
+            "N° participant", "Laboratory Name", "Code",
+            "ISO 17025 Accreditation", "Sample Reception Date", "Test date",
+            "Temperature (°C)", "Relative humidity (%)", "Standard / Method Used",
+            "Reported Value", "Replicate 2", "Mean Value", "Expanded Uncertainty U(x)", "Comments",
+        ]
+        sheet_name = "FTE_008"
+    else:
+        headers = [
+            "N° participant", "Laboratory Name", "Code",
+            "ISO 17025 Accreditation", "Sample Reception Date", "Test date",
+            "Method used", "Instrument", "Result (Grade)",
+            "Uncertainty U(x) = ± Grade", "Comments",
+        ]
+        sheet_name = "FTE_004"
+
+    ws = wb.create_sheet(sheet_name)
+    ws.append(headers)
+    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", name="Arial", size=10)
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.freeze_panes = "A2"
+    for col in ws.columns:
+        ws.column_dimensions[col[0].column_letter].width = 20
+    export_dir = Path(current_app.config["EXPORT_FOLDER"])
+    export_dir.mkdir(parents=True, exist_ok=True)
+    target = export_dir / f"{template.upper()}_template.xlsx"
+    wb.save(target)
+    return target
+
+
 def _export_fte_workbook(campaign, template):
     """Export vers un classeur reprenant la structure des modèles internes
     FTE_004 (essais qualitatifs / solidité) et FTE_008 (essais quantitatifs).
@@ -693,6 +770,18 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None):
             label += " (vous)"
         return label
 
+    def _fmt_report_value(value, decimals=3):
+        """Valeur lisible dans un document Word, sans crash sur None."""
+        if value is None:
+            return "-"
+        if isinstance(value, float):
+            if abs(value) >= 1000:
+                s = f"{value:.{decimals}f}"
+            else:
+                s = f"{value:.{decimals}f}".rstrip("0").rstrip(".")
+            return s if s not in ("-0", "-0.0") else "0"
+        return str(value)
+
     # Style de base
     normal = doc.styles["Normal"]
     normal.font.name = "Calibri"
@@ -796,14 +885,17 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None):
 
         if trial.trial_type == "quantitative":
             values = [s.value for s in submissions if s.value is not None]
-            median, robust_sd = robust_stats(values)
-
-            x_star = trial.target_value if trial.target_value is not None else median
-            s_star = trial.target_sd if trial.target_sd is not None else robust_sd
-
-            doc.add_paragraph(f"Nombre de participants : {len(values)}   |   "
-                               f"Valeur consensuelle x* : {x_star if x_star is not None else '-'}   |   "
-                               f"Écart-type s* : {s_star if s_star is not None else '-'}")
+            if values:
+                median, robust_sd = robust_stats(values)
+                x_star = trial.target_value if trial.target_value is not None else median
+                s_star = trial.target_sd if trial.target_sd is not None else robust_sd
+                doc.add_paragraph(
+                    f"Nombre de participants : {len(values)}   |   "
+                    f"Valeur consensuelle x* : {_fmt_report_value(x_star)}   |   "
+                    f"Écart-type s* : {_fmt_report_value(s_star)}"
+                )
+            else:
+                doc.add_paragraph("Aucune valeur soumise : aucun calcul de statistique / z-score n'est disponible pour cet essai.")
 
             res_table = doc.add_table(rows=1, cols=5)
             res_table.style = "Light Grid Accent 1"
@@ -822,18 +914,23 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None):
 
                 cells = res_table.add_row().cells
                 cells[0].text = _lab_label(s.form.laboratory)
-                cells[1].text = str(s.value) if s.value is not None else "-"
-                cells[2].text = str(s.z_score) if s.z_score is not None else "-"
+                cells[1].text = _fmt_report_value(s.value)
+                cells[2].text = _fmt_report_value(s.z_score)
                 cells[3].text = interp
                 cells[4].text = "Oui" if s.validated else "Non"
 
         else:
             results = [s.qualitative_result for s in submissions if s.qualitative_result]
-            consensus, agreement_rate, _ = qualitative_consensus(results)
-
-            doc.add_paragraph(f"Nombre de participants : {len(results)}   |   "
-                               f"Résultat consensuel : {consensus or '-'}   |   "
-                               f"Taux d'accord : {agreement_rate}%")
+            if results:
+                consensus, agreement_rate, _ = qualitative_consensus(results)
+                doc.add_paragraph(
+                    f"Nombre de participants : {len(results)}   |   "
+                    f"Résultat consensuel : {consensus or '-'}   |   "
+                    f"Taux d'accord : {agreement_rate}%"
+                )
+            else:
+                consensus, agreement_rate = None, 0.0
+                doc.add_paragraph("Aucune donnée qualitative soumise pour cet essai.")
 
             res_table = doc.add_table(rows=1, cols=4)
             res_table.style = "Light Grid Accent 1"
