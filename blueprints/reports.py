@@ -11,7 +11,8 @@ from utils import (
     z_score_interpretation, log_action, robust_stats, qualitative_consensus,
     grubbs_test, kolmogorov_smirnov_test, mandel_h_statistic,
     kurtosis_and_skewness, horwitz_rsd, compute_cohen_kappa,
-    median_made_niqr, std_dev, compute_median
+    median_made_niqr, std_dev, compute_median,
+    m_estimator_logistic, droite_henry, boxplot_stats, algorithm_s
 )
 from blueprints.auth import roles_required
 from extensions import db
@@ -951,6 +952,9 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
                 ks_res = kolmogorov_smirnov_test(values)
                 mandel_res = mandel_h_statistic(submissions)
                 shape_res = kurtosis_and_skewness(values)
+                m_est_res = m_estimator_logistic(values)
+                henry_res = droite_henry(values)
+                box_res = boxplot_stats(values)
                 
                 # Calcul Horwitz si applicable
                 x_val = av.get("x_pt") or alg_a_mean
@@ -1003,7 +1007,7 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
                         ratio_note = f"Ratio = {ratio} (≤ 0.3 : incertitude négligeable)" if ratio <= 0.3 else f"Ratio = {ratio} (> 0.3 : incertitude significative, z' recommandé)"
                         _add_est_row("Ratio d'incertitude u / σ_pt", ratio, ratio_note)
 
-                # 2. Statistiques Robustes (ISO 13528 Annexe C)
+                # 2. Statistiques Robustes (ISO 13528 Annexe C & Procédure TTS §5)
                 if "alg_a_mean" in active_estimators:
                     _add_est_row("Moyenne robuste Algorithme A (x*)", alg_a_mean, "Moyenne robuste itérative (ISO 13528 Annexe C)")
                 if "alg_a_sd" in active_estimators:
@@ -1012,14 +1016,22 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
                     _add_est_row("Médiane robuste (x_med)", med_res.get("median"), "Médiane des participants (insensible aux extrêmes)")
                 if "made" in active_estimators:
                     _add_est_row("Écart-type robuste (MADe)", med_res.get("made"), "Écart-type basé sur le MAD normalisé (facteur 1.4826)")
+                if "niqr" in active_estimators:
+                    _add_est_row("Écart interquartile normalisé (nIQR)", med_res.get("niqr"), "nIQR = 0.7413 · IQR (ISO 13528 §C.2)")
+                if "m_estimator" in active_estimators:
+                    _add_est_row("M-Estimateur Logistique (μ̂)", m_est_res.get("mu_hat"), f"Échelle S = {m_est_res.get('S')}, σ_robuste = {m_est_res.get('sigma_robuste')} (Procédure TTS §5.1.3.2)")
                 if "hampel_q" in active_estimators:
                     _add_est_row("Estimateur robuste Q / Hampel", med_res.get("made"), "Estimateur robuste d'échelle à haut point de rupture")
 
-                # 3. Statistiques Classiques
+                # 3. Statistiques Classiques (ISO 5725-2)
                 if "mean_arith" in active_estimators:
                     _add_est_row("Moyenne arithmétique classique (x̄)", arith_mean, "Moyenne classique non robuste")
                 if "sd_arith" in active_estimators:
                     _add_est_row("Écart-type classique (s)", arith_sd, "Dispersion empirique sans élimination")
+                if "se_mean" in active_estimators:
+                    import math
+                    se_val = round(arith_sd / math.sqrt(len(values)), 5) if len(values) > 0 else None
+                    _add_est_row("Erreur-type de la moyenne (SE)", se_val, "SE = s / √p")
                 if "cv_percent" in active_estimators:
                     m_a = arith_mean
                     s_a = arith_sd
@@ -1034,13 +1046,16 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
                 # 4. Modèles Prédictifs & Horwitz
                 if "horwitz" in active_estimators:
                     _add_est_row("Écart-type de Horwitz (σ_Horwitz)", horw_sd, "Équation prédictive de Horwitz (fitness for purpose)")
+                if "horwitz_rsd" in active_estimators:
+                    h_rsd = horwitz_rsd(x_val) if (x_val and x_val > 0) else None
+                    _add_est_row("RSD prédictif de Horwitz (RSD_R)", f"{h_rsd} %" if h_rsd is not None else "-", "RSD_R = 2^(1 - 0.5 log C)")
                 if "horrat" in active_estimators:
                     s_val = av.get("sigma_pt") or alg_a_sd or arith_sd
                     horrat_v = round(s_val / horw_sd, 2) if (s_val and horw_sd and horw_sd > 0) else None
                     h_note = "Dispersion acceptable (0.5 ≤ HorRat ≤ 2.0)" if (horrat_v and 0.5 <= horrat_v <= 2.0) else "Dispersion inhabituelle"
                     _add_est_row("Ratio de HorRat", horrat_v, h_note if horrat_v is not None else "Non applicable")
 
-                # 5. Détection des Valeurs Aberrantes
+                # 5. Détection des Valeurs Aberrantes & Box-Plot
                 if "grubbs" in active_estimators:
                     g_stat = g_res.get("status_label") or g_res.get("status") or "Aucune valeur aberrante"
                     g_obs = g_res.get("G")
@@ -1049,6 +1064,8 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
                     dg = g_res.get("double_grubbs") or {}
                     dg_stat = dg.get("status") or "Aucune paire aberrante"
                     _add_est_row("Test de Grubbs double", dg_stat, "Recherche de paires aberrantes (ISO 5725-2 §7.3.4)")
+                if "boxplot" in active_estimators:
+                    _add_est_row("Statistiques Box-Plot (Tukey)", f"Q1: {box_res.get('q1')} | Med: {box_res.get('median')} | Q3: {box_res.get('q3')}", f"IQR = {box_res.get('iqr')} | Bornes: [{box_res.get('lower_fence')}, {box_res.get('upper_fence')}]")
 
                 # 6. Normalité & Forme
                 if "normality" in active_estimators:
@@ -1057,6 +1074,9 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
                     _add_est_row("Test de normalité (Lilliefors)", f"D_max = {ks_res.get('d_max')} (seuil {ks_res.get('d_critical')})", norm_label)
                 if "ks_standard" in active_estimators:
                     _add_est_row("Test K-S standard classique", f"Seuil = {ks_res.get('d_critical_ks_standard')}", "Référence sans ajustement de paramètres")
+                if "droite_henry" in active_estimators:
+                    h_conf = "Linéaire / Normale conforme" if henry_res.get("normal_conform") else "Non linéaire (déviation)"
+                    _add_est_row("Droite d'Henry (TTS §A1.1)", f"R² = {henry_res.get('r_squared')}", h_conf)
                 if "kurt_skew" in active_estimators:
                     _add_est_row("Kurtosis & Skewness", f"K = {shape_res.get('kurtosis')} | Skew = {shape_res.get('skewness')}", f"{shape_res.get('kurtosis_type')} / {shape_res.get('skewness_type')}")
 
@@ -1066,6 +1086,29 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
                     _add_est_row("Statistique h de Mandel", f"Seuil 5% = {mandel_res.get('h_critical_5')}, 1% = {mandel_res.get('h_critical_1')}", m_status)
                 if "mandel_k" in active_estimators:
                     _add_est_row("Statistique k de Mandel", "Évaluée sur réplicats", "Cohérence de répétabilité intra-laboratoire")
+                if "alg_s" in active_estimators:
+                    import math
+                    rep_w = []
+                    for s in submissions:
+                        if s.value is not None and s.replicate_2 is not None:
+                            rep_w.append(abs(s.value - s.replicate_2) / math.sqrt(2.0))
+                    if len(rep_w) >= 2:
+                        s_res = algorithm_s(rep_w)
+                        _add_est_row("Algorithme S (dispersion intra-lab)", s_res.get("s_r"), "Écart-type de répétabilité robuste (ISO 13528 §C.4)")
+                    else:
+                        _add_est_row("Algorithme S (dispersion intra-lab)", "-", "Nécessite des réplicats multiples")
+
+                # 8. Scores de Performance & Métrologie (ISO 13528 §9)
+                if "z_prime" in active_estimators:
+                    import math
+                    u_val = av.get("u_xpt") or 0.0
+                    sig_val = av.get("sigma_pt") or 1.0
+                    sig_prime = round(math.sqrt(sig_val**2 + u_val**2), 4)
+                    _add_est_row("Écart-type combiné z' (σ_pt')", sig_prime, "σ_pt' = √(σ_pt² + u²) lorsque u/σ > 0.3 (ISO 13528 §9.2)")
+                if "en_score" in active_estimators:
+                    _add_est_row("Nombre En (ISO 13528 §9.3)", "Critère |En| ≤ 1.0", "En = (x - x_pt) / √(U_lab² + U_ref²)")
+                if "zeta_score" in active_estimators:
+                    _add_est_row("Score Zeta ζ (ISO 13528 §9.4)", "Critère |ζ| ≤ 2.0", "ζ = (x - x_pt) / √(u_lab² + u_xpt²)")
             else:
                 doc.add_paragraph("Aucune valeur soumise : aucun calcul de statistique / z-score n'est disponible pour cet essai.")
 

@@ -41,6 +41,26 @@ class TestSecurityAndReports(unittest.TestCase):
         self.assertIn("U_xpt", parsed)
         self.assertIn("normality", parsed)
 
+    def test_all_estimators_catalog(self):
+        """Vérifie que la liste complète des estimateurs contient tous les 30+ indicateurs."""
+        all_catalog = [
+            "x_pt", "sigma_pt", "u_xpt", "U_xpt", "u_ratio",
+            "alg_a_mean", "alg_a_sd", "median", "made", "niqr", "m_estimator", "hampel_q",
+            "mean_arith", "sd_arith", "se_mean", "cv_percent", "min_max",
+            "horwitz", "horwitz_rsd", "horrat",
+            "grubbs", "grubbs_double", "boxplot",
+            "normality", "ks_standard", "droite_henry", "kurt_skew",
+            "mandel_h", "mandel_k", "alg_s",
+            "z_score", "z_prime", "en_score", "zeta_score",
+            "consensus", "kappa"
+        ]
+        self.assertGreaterEqual(len(all_catalog), 30)
+        self.assertIn("m_estimator", all_catalog)
+        self.assertIn("droite_henry", all_catalog)
+        self.assertIn("boxplot", all_catalog)
+        self.assertIn("z_prime", all_catalog)
+        self.assertIn("en_score", all_catalog)
+
 
 if __name__ == "__main__":
     unittest.main()

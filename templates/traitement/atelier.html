@@ -321,32 +321,33 @@
 
       <!-- Appliquer méthode -->
       <div class="card border-0 shadow-sm mt-4">
-        <div class="card-header bg-success text-white py-2">
-          <i class="bi bi-check2-circle me-2"></i>Valider les Estimateurs pour cet Essai
+        <div class="card-header bg-success text-white py-2 d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-check2-circle me-2"></i>Valider les Estimateurs pour cet Essai</span>
+          <span class="small badge bg-white text-success fw-bold" id="method_badge">Sélection interactive</span>
         </div>
         <div class="card-body">
           <form method="post" action="{{ url_for('traitement.apply_stats', trial_id=selected_trial.id) }}" class="row g-3">
             <div class="col-md-3">
               <label class="form-label small fw-semibold">Méthode retenue</label>
-              <select name="method_choice" class="form-select">
-                <option value="algorithm_a">Algorithme A (ISO 13528)</option>
-                <option value="median_made">Médiane / MADe</option>
-                <option value="m_estimator">M-Estimateur Logistique</option>
-                <option value="classical">Statistiques classiques</option>
+              <select name="method_choice" id="method_choice_select" class="form-select" onchange="onMethodChange(this.value)">
+                <option value="algorithm_a" {% if selected_trial.sigma_pt_method == 'robuste' and 'Algorithme' in (selected_trial.sigma_pt_traceability or '') %}selected{% endif %}>Algorithme A (ISO 13528)</option>
+                <option value="median_made" {% if 'Médiane' in (selected_trial.sigma_pt_traceability or '') %}selected{% endif %}>Médiane / MADe</option>
+                <option value="m_estimator" {% if 'M-estimateur' in (selected_trial.sigma_pt_traceability or '') %}selected{% endif %}>M-Estimateur Logistique</option>
+                <option value="classical" {% if 'classiques' in (selected_trial.sigma_pt_traceability or '') %}selected{% endif %}>Statistiques classiques</option>
                 <option value="manual">Valeurs manuelles</option>
               </select>
             </div>
             <div class="col-md-2">
               <label class="form-label small fw-semibold">x<sub>pt</sub></label>
-              <input type="number" step="any" name="target_value" class="form-control" value="{{ stats.target_val }}" placeholder="Valeur assignée">
+              <input type="number" step="any" name="target_value" id="target_value_input" class="form-control" value="{{ stats.target_val }}" placeholder="Valeur assignée">
             </div>
             <div class="col-md-2">
               <label class="form-label small fw-semibold">σ<sub>pt</sub></label>
-              <input type="number" step="any" name="target_sd" class="form-control" value="{{ stats.target_sd }}" placeholder="Écart-type">
+              <input type="number" step="any" name="target_sd" id="target_sd_input" class="form-control" value="{{ stats.target_sd }}" placeholder="Écart-type">
             </div>
             <div class="col-md-2">
               <label class="form-label small fw-semibold">U(x<sub>pt</sub>) <span class="text-muted">k=2</span></label>
-              <input type="number" step="any" name="reference_uncertainty" class="form-control" value="{{ stats.ref_unc }}" placeholder="Incertitude élargie"
+              <input type="number" step="any" name="reference_uncertainty" id="reference_uncertainty_input" class="form-control" value="{{ stats.ref_unc }}" placeholder="Incertitude élargie"
                      title="Incertitude ÉLARGIE U(x_pt), k=2. En utilise U ; z' utilise u = U/2 (ISO 13528).">
             </div>
             <div class="col-md-3 d-flex align-items-end">
@@ -357,6 +358,42 @@
           </form>
         </div>
       </div>
+
+      <script>
+        function onMethodChange(method) {
+          const methodsData = {
+            algorithm_a: {
+              x: {{ stats.alg_a.x_pt if stats.alg_a and stats.alg_a.x_pt is not none else "null" }},
+              s: {{ stats.alg_a.sigma_pt if stats.alg_a and stats.alg_a.sigma_pt is not none else "null" }},
+              u: {{ stats.alg_a.U_xpt if stats.alg_a and stats.alg_a.U_xpt is not none else "null" }}
+            },
+            median_made: {
+              x: {{ stats.med_stats.median if stats.med_stats and stats.med_stats.median is not none else "null" }},
+              s: {{ stats.med_stats.made if stats.med_stats and stats.med_stats.made is not none else "null" }},
+              u: {{ (stats.med_stats.u_xpt * 2.0) | round(4) if stats.med_stats and stats.med_stats.u_xpt is not none else "null" }}
+            },
+            m_estimator: {
+              x: {{ stats.m_est.mu_hat if stats.m_est and stats.m_est.mu_hat is not none else "null" }},
+              s: {{ stats.m_est.sigma_robuste if stats.m_est and stats.m_est.sigma_robuste is not none else "null" }},
+              u: {{ stats.m_est.U_xpt if stats.m_est and stats.m_est.U_xpt is not none else "null" }}
+            },
+            classical: {
+              x: {{ stats.class_st.mean if stats.class_st and stats.class_st.mean is not none else "null" }},
+              s: {{ stats.class_st.sd if stats.class_st and stats.class_st.sd is not none else "null" }},
+              u: {{ stats.class_st.U_xpt if stats.class_st and stats.class_st.U_xpt is not none else "null" }}
+            }
+          };
+
+          if (methodsData[method]) {
+            const d = methodsData[method];
+            if (d.x !== null) document.getElementById('target_value_input').value = d.x;
+            if (d.s !== null) document.getElementById('target_sd_input').value = d.s;
+            if (d.u !== null) document.getElementById('reference_uncertainty_input').value = d.u;
+            const b = document.getElementById('method_badge');
+            if (b) b.textContent = 'Valeurs chargées depuis ' + method;
+          }
+        }
+      </script>
     </div>
 
     <!-- ══════════════════════════════════════════════════════════════════ -->

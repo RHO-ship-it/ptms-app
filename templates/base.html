@@ -782,7 +782,7 @@
         ============================ */
         @keyframes fadeSlideIn {
             from { opacity: 0; transform: translateY(10px); }
-            to   { opacity: 1; transform: translateY(0); }
+            to   { opacity: 1; transform: none; }
         }
 
         .ptms-animate { animation: fadeSlideIn 0.3s ease forwards; }
@@ -790,6 +790,8 @@
         /* ============================
            OVERRIDE BOOTSTRAP DEFAULTS
         ============================ */
+        .modal { z-index: 1065 !important; }
+        .modal-backdrop { z-index: 1055 !important; }
         .card { border-radius: var(--ptms-radius-lg); border-color: var(--ptms-border); box-shadow: var(--ptms-shadow); }
         .btn { border-radius: 8px; font-weight: 600; }
         .badge { border-radius: 20px; font-weight: 600; }
@@ -1071,6 +1073,11 @@
         if (link.href && link.href !== '#' && window.location.pathname.startsWith(new URL(link.href).pathname) && link.href !== window.location.origin + '/') {
             link.classList.add('active');
         }
+    });
+
+    // ===== BOOTSTRAP MODAL FIX (unblock backdrop trapping) =====
+    document.querySelectorAll('.modal').forEach(function(modal) {
+        document.body.appendChild(modal);
     });
 
     // ===== GLOBAL SEARCH (UI only, hookable) =====

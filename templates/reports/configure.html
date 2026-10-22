@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Configurer le rapport — {{ campaign.reference }}{% endblock %}
+{% block title %}Choisir les estimateurs — {{ campaign.reference }}{% endblock %}
 
 {% block content %}
-<div class="container-fluid py-4" style="max-width: 1200px;">
+<div class="container-fluid py-4" style="max-width: 1280px;">
   <!-- En-tête -->
   <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
@@ -24,32 +24,32 @@
 
   <form method="POST" action="{{ url_for('reports.configure_report', campaign_id=campaign.id) }}" id="estimators-form">
     <!-- Barre d'outils de sélection rapide -->
-    <div class="card shadow-sm border-0 mb-4 bg-white">
+    <div class="card shadow-sm border-0 mb-4 bg-white sticky-top" style="top: 70px; z-index: 1020;">
       <div class="card-body p-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2 flex-wrap">
           <span class="small fw-bold text-muted text-uppercase me-2"><i class="bi bi-magic me-1"></i>Préréglages :</span>
           <button type="button" class="btn btn-sm btn-primary" onclick="setPreset('iso')">
             <i class="bi bi-check2-circle me-1"></i> Recommandé ISO 13528
           </button>
-          <button type="button" class="btn btn-sm btn-outline-dark" onclick="setPreset('all')">
-            <i class="bi bi-check-all me-1"></i> Tout sélectionner (Complet)
+          <button type="button" class="btn btn-sm btn-dark" onclick="setPreset('all')">
+            <i class="bi bi-check-all me-1"></i> Tout sélectionner (100% complet)
           </button>
           <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setPreset('minimal')">
-            <i class="bi bi-dash-circle me-1"></i> Minimal (z-scores seuls)
+            <i class="bi bi-dash-circle me-1"></i> Minimal (z seul)
           </button>
           <button type="button" class="btn btn-sm btn-outline-danger" onclick="setPreset('none')">
             <i class="bi bi-x-circle me-1"></i> Tout décocher
           </button>
         </div>
-        <div>
-          <button type="submit" name="format" value="word" class="btn btn-success fw-semibold">
-            <i class="bi bi-file-earmark-word me-1"></i> Générer le Rapport Word (.docx)
+        <div class="d-flex gap-2">
+          <button type="submit" name="format" value="word" class="btn btn-success fw-bold px-4 shadow-sm">
+            <i class="bi bi-file-earmark-word me-1"></i> Télécharger le Rapport Word (.docx)
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Grille des catégories d'estimateurs -->
+    <!-- Grille des 9 catégories d'estimateurs -->
     <div class="row g-4">
       <!-- 1. Valeur Assignée & Incertitudes -->
       <div class="col-12 col-lg-6">
@@ -91,13 +91,13 @@
       <div class="col-12 col-lg-6">
         <div class="card shadow-sm border-0 h-100">
           <div class="card-header bg-success bg-opacity-10 border-0 py-3">
-            <h6 class="mb-0 fw-bold text-success"><i class="bi bi-shield-check me-2"></i>2. Statistiques Robustes (ISO 13528 Annexe C)</h6>
+            <h6 class="mb-0 fw-bold text-success"><i class="bi bi-shield-check me-2"></i>2. Statistiques Robustes (ISO 13528 Annexe C & TTS §5)</h6>
           </div>
           <div class="card-body">
             <div class="form-check form-switch mb-3">
               <input class="form-check-input est-check" type="checkbox" name="estimators" value="alg_a_mean" id="est_alg_a_mean" checked>
               <label class="form-check-label fw-bold" for="est_alg_a_mean">Moyenne robuste Algorithme A (x*)</label>
-              <div class="text-muted small">Moyenne robuste itérative avec tronquage à 1.5 s*.</div>
+              <div class="text-muted small">Moyenne robuste itérative avec tronquage à 1.5 s* (ISO 13528 §C.3.1).</div>
             </div>
             <div class="form-check form-switch mb-3">
               <input class="form-check-input est-check" type="checkbox" name="estimators" value="alg_a_sd" id="est_alg_a_sd" checked>
@@ -107,17 +107,27 @@
             <div class="form-check form-switch mb-3">
               <input class="form-check-input est-check" type="checkbox" name="estimators" value="median" id="est_median" checked>
               <label class="form-check-label fw-bold" for="est_median">Médiane robuste (x_med)</label>
-              <div class="text-muted small">Valeur centrale des résultats, totalement insensible aux valeurs aberrantes extrêmes.</div>
+              <div class="text-muted small">Valeur centrale des résultats, insensible aux valeurs aberrantes extrêmes (ISO 13528 §C.2).</div>
             </div>
             <div class="form-check form-switch mb-3">
               <input class="form-check-input est-check" type="checkbox" name="estimators" value="made" id="est_made" checked>
               <label class="form-check-label fw-bold" for="est_made">Écart-type robuste MADe (1.4826 · MAD)</label>
               <div class="text-muted small">Écart absolu médian normalisé, estimateur robuste d'échelle standardisé.</div>
             </div>
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="niqr" id="est_niqr" checked>
+              <label class="form-check-label fw-bold" for="est_niqr">Écart interquartile normalisé (nIQR)</label>
+              <div class="text-muted small">nIQR = 0.7413 · (Q3 - Q1), mesure robuste de variabilité interquartile.</div>
+            </div>
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="m_estimator" id="est_m_estimator" checked>
+              <label class="form-check-label fw-bold" for="est_m_estimator">M-Estimateur Logistique (Procédure TTS §5.1.3.2)</label>
+              <div class="text-muted small">Moyenne robuste μ̂, échelle robuste S et σ_robuste = S / 1.29 avec fonction d'influence logistique.</div>
+            </div>
             <div class="form-check form-switch">
               <input class="form-check-input est-check" type="checkbox" name="estimators" value="hampel_q" id="est_hampel_q">
               <label class="form-check-label fw-bold" for="est_hampel_q">Estimateur robuste de Hampel / méthode Q</label>
-              <div class="text-muted small">Estimateur alternatif robuste à haut point de rupture.</div>
+              <div class="text-muted small">Estimateur robuste d'échelle à haut point de rupture.</div>
             </div>
           </div>
         </div>
@@ -141,9 +151,14 @@
               <div class="text-muted small">Écart-type empirique avec dénominateur p - 1.</div>
             </div>
             <div class="form-check form-switch mb-3">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="se_mean" id="est_se_mean" checked>
+              <label class="form-check-label fw-bold" for="est_se_mean">Erreur-type de la moyenne (SE = s / √p)</label>
+              <div class="text-muted small">Dispersion d'échantillonnage de la moyenne classique.</div>
+            </div>
+            <div class="form-check form-switch mb-3">
               <input class="form-check-input est-check" type="checkbox" name="estimators" value="cv_percent" id="est_cv_percent" checked>
               <label class="form-check-label fw-bold" for="est_cv_percent">Coefficient de variation relatif (CV %)</label>
-              <div class="text-muted small">CV % = (s / x̄) · 100 %, mesure relative de variabilité inter-laboratoires.</div>
+              <div class="text-muted small">CV % = (s / x̄) · 100 %, variabilité relative inter-laboratoires.</div>
             </div>
             <div class="form-check form-switch">
               <input class="form-check-input est-check" type="checkbox" name="estimators" value="min_max" id="est_min_max" checked>
@@ -158,13 +173,18 @@
       <div class="col-12 col-lg-6">
         <div class="card shadow-sm border-0 h-100">
           <div class="card-header bg-warning bg-opacity-10 border-0 py-3">
-            <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-calculator me-2"></i>4. Modèles Prédictifs & Horwitz</h6>
+            <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-calculator me-2"></i>4. Modèles Prédictifs & Horwitz (Concentration)</h6>
           </div>
           <div class="card-body">
             <div class="form-check form-switch mb-3">
               <input class="form-check-input est-check" type="checkbox" name="estimators" value="horwitz" id="est_horwitz" checked>
               <label class="form-check-label fw-bold" for="est_horwitz">Écart-type prédictif de Horwitz (σ_Horwitz)</label>
-              <div class="text-muted small">Équation empirique de Horwitz : RSD_R = 2^(1 - 0.5 log C) pour analyses de concentration.</div>
+              <div class="text-muted small">Équation empirique de Horwitz : RSD_R = 2^(1 - 0.5 log C) pour analyses quantitatives.</div>
+            </div>
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="horwitz_rsd" id="est_horwitz_rsd" checked>
+              <label class="form-check-label fw-bold" for="est_horwitz_rsd">RSD relatif théorique de Horwitz (RSD_R %)</label>
+              <div class="text-muted small">Écart-type relatif attendu selon la concentration du mesurande.</div>
             </div>
             <div class="form-check form-switch">
               <input class="form-check-input est-check" type="checkbox" name="estimators" value="horrat" id="est_horrat" checked>
@@ -175,11 +195,11 @@
         </div>
       </div>
 
-      <!-- 5. Détection des Valeurs Aberrantes -->
+      <!-- 5. Détection des Valeurs Aberrantes & Box-Plot -->
       <div class="col-12 col-lg-6">
         <div class="card shadow-sm border-0 h-100">
           <div class="card-header bg-danger bg-opacity-10 border-0 py-3">
-            <h6 class="mb-0 fw-bold text-danger"><i class="bi bi-exclamation-triangle me-2"></i>5. Détection des Valeurs Aberrantes (ISO 5725-2)</h6>
+            <h6 class="mb-0 fw-bold text-danger"><i class="bi bi-exclamation-triangle me-2"></i>5. Détection des Aberrants & Box-Plot (ISO 5725-2 & Tukey)</h6>
           </div>
           <div class="card-body">
             <div class="form-check form-switch mb-3">
@@ -187,10 +207,15 @@
               <label class="form-check-label fw-bold" for="est_grubbs">Test de Grubbs simple (valeur unique maximale/minimale)</label>
               <div class="text-muted small">Détection aux seuils 5 % (vigilance) et 1 % (action) selon table ISO 5725-2.</div>
             </div>
-            <div class="form-check form-switch">
+            <div class="form-check form-switch mb-3">
               <input class="form-check-input est-check" type="checkbox" name="estimators" value="grubbs_double" id="est_grubbs_double" checked>
               <label class="form-check-label fw-bold" for="est_grubbs_double">Test de Grubbs double (paire aberrante haute ou basse)</label>
               <div class="text-muted small">Détection simultanée de deux valeurs aberrantes du même côté (ISO 5725-2 §7.3.4).</div>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="boxplot" id="est_boxplot" checked>
+              <label class="form-check-label fw-bold" for="est_boxplot">Statistiques de Box-Plot (Tukey / TTS §A1.2)</label>
+              <div class="text-muted small">Q1, Médiane, Q3, IQR, moustaches et identification des valeurs hors clôtures (1.5 · IQR).</div>
             </div>
           </div>
         </div>
@@ -200,7 +225,7 @@
       <div class="col-12 col-lg-6">
         <div class="card shadow-sm border-0 h-100">
           <div class="card-header bg-secondary bg-opacity-10 border-0 py-3">
-            <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-bezier2 me-2"></i>6. Normalité & Forme (ISO 13528 / Lilliefors)</h6>
+            <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-bezier2 me-2"></i>6. Normalité & Forme (ISO 13528 / Lilliefors / Henry)</h6>
           </div>
           <div class="card-body">
             <div class="form-check form-switch mb-3">
@@ -211,12 +236,17 @@
             <div class="form-check form-switch mb-3">
               <input class="form-check-input est-check" type="checkbox" name="estimators" value="ks_standard" id="est_ks_standard">
               <label class="form-check-label fw-bold" for="est_ks_standard">Test de Kolmogorov-Smirnov standard (référence historique)</label>
-              <div class="text-muted small">Calcul K-S classique pour comparaison théorique.</div>
+              <div class="text-muted small">Calcul K-S classique pour comparaison théorique (seuil 1.36 / √p).</div>
+            </div>
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="droite_henry" id="est_droite_henry" checked>
+              <label class="form-check-label fw-bold" for="est_droite_henry">Droite d'Henry (TTS §A1.1)</label>
+              <div class="text-muted small">Test de linéarité par régression des normits, coefficient R² et décision de normalité.</div>
             </div>
             <div class="form-check form-switch">
               <input class="form-check-input est-check" type="checkbox" name="estimators" value="kurt_skew" id="est_kurt_skew" checked>
               <label class="form-check-label fw-bold" for="est_kurt_skew">Forme : Asymétrie (Skewness) & Aplatissement (Kurtosis)</label>
-              <div class="text-muted small">Indicateurs de symétrie et de lourdeur de queue de distribution (Procédure TTS §A1.7/8).</div>
+              <div class="text-muted small">Indicateurs de symétrie et d'aplatissement de distribution (Procédure TTS §A1.7/8).</div>
             </div>
           </div>
         </div>
@@ -234,20 +264,56 @@
               <label class="form-check-label fw-bold" for="est_mandel_h">Statistique h de Mandel (cohérence inter-laboratoires)</label>
               <div class="text-muted small">Seuils exacts ISO 5725-2 Tableau 4 pour détecter les biais systématiques.</div>
             </div>
-            <div class="form-check form-switch">
+            <div class="form-check form-switch mb-3">
               <input class="form-check-input est-check" type="checkbox" name="estimators" value="mandel_k" id="est_mandel_k">
               <label class="form-check-label fw-bold" for="est_mandel_k">Statistique k de Mandel (cohérence intra-laboratoire)</label>
               <div class="text-muted small">Évaluation de la répétabilité intra-laboratoire lors d'essais à réplicats multiples.</div>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="alg_s" id="est_alg_s">
+              <label class="form-check-label fw-bold" for="est_alg_s">Algorithme S (dispersion intra-laboratoire robuste)</label>
+              <div class="text-muted small">Estimation robuste de la répétabilité s_r selon l'Annexe C.4 de l'ISO 13528.</div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 8. Essais Qualitatifs & Concordance -->
+      <!-- 8. Scores de Performance & Métrologie -->
+      <div class="col-12 col-lg-6">
+        <div class="card shadow-sm border-0 h-100">
+          <div class="card-header bg-info bg-opacity-10 border-0 py-3">
+            <h6 class="mb-0 fw-bold text-primary"><i class="bi bi-award me-2"></i>8. Scores de Performance Individuelle (ISO 13528 §9)</h6>
+          </div>
+          <div class="card-body">
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="z_score" id="est_z_score" checked>
+              <label class="form-check-label fw-bold" for="est_z_score">Score standardisé z (ISO 13528 §9.2)</label>
+              <div class="text-muted small">z = (x - x_pt) / σ_pt avec seuils |z| ≤ 2 (satisfaisant) et |z| ≥ 3 (non satisfaisant).</div>
+            </div>
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="z_prime" id="est_z_prime" checked>
+              <label class="form-check-label fw-bold" for="est_z_prime">Score élargi z' (incertitude combinée u)</label>
+              <div class="text-muted small">Recommandé lorsque u(x_pt) > 0.3 · σ_pt : z' = (x - x_pt) / √(σ_pt² + u²).</div>
+            </div>
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="en_score" id="est_en_score" checked>
+              <label class="form-check-label fw-bold" for="est_en_score">Nombre En (incertitudes élargies déclarées)</label>
+              <div class="text-muted small">En = (x - x_pt) / √(U_lab² + U_ref²), satisfaisant si |En| ≤ 1.0 (ISO 13528 §9.3).</div>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="zeta_score" id="est_zeta_score">
+              <label class="form-check-label fw-bold" for="est_zeta_score">Score Zeta ζ (incertitudes standard)</label>
+              <div class="text-muted small">ζ = (x - x_pt) / √(u_lab² + u_xpt²), satisfaisant si |ζ| ≤ 2.0 (ISO 13528 §9.4).</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 9. Essais Qualitatifs & Concordance -->
       <div class="col-12 col-lg-6">
         <div class="card shadow-sm border-0 h-100">
           <div class="card-header bg-purple bg-opacity-10 border-0 py-3" style="background:#f3e8ff;">
-            <h6 class="mb-0 fw-bold" style="color:#6b21a8;"><i class="bi bi-check2-all me-2"></i>8. Essais Qualitatifs & de Solidité (ISO 13528 §9.5)</h6>
+            <h6 class="mb-0 fw-bold" style="color:#6b21a8;"><i class="bi bi-check2-all me-2"></i>9. Essais Qualitatifs & de Solidité (ISO 13528 §9.5)</h6>
           </div>
           <div class="card-body">
             <div class="form-check form-switch mb-3">
@@ -258,7 +324,7 @@
             <div class="form-check form-switch">
               <input class="form-check-input est-check" type="checkbox" name="estimators" value="kappa" id="est_kappa" checked>
               <label class="form-check-label fw-bold" for="est_kappa">Coefficient Kappa de Cohen / Fleiss</label>
-              <div class="text-muted small">Mesure de l'accord inter-évaluateurs au-delà du hasard avec erreur standard et score Z.</div>
+              <div class="text-muted small">Mesure de l'accord inter-évaluateurs au-delà du hasard avec erreur standard, score Z et échelle Landis & Koch.</div>
             </div>
           </div>
         </div>
@@ -269,11 +335,11 @@
     <div class="card shadow-sm border-0 mt-4 bg-white sticky-bottom py-2">
       <div class="card-body p-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span class="text-muted small">
-          <i class="bi bi-info-circle me-1"></i>Les estimateurs cochés seront intégrés dans le tableau récapitulatif de chaque essai.
+          <i class="bi bi-info-circle me-1"></i>Les estimateurs cochés seront intégrés dans le tableau récapitulatif de chaque essai dans le document Word.
         </span>
         <div class="d-flex gap-2">
           <a href="{{ url_for('reports.index') }}" class="btn btn-outline-secondary">Annuler</a>
-          <button type="submit" name="format" value="word" class="btn btn-success fw-bold px-4">
+          <button type="submit" name="format" value="word" class="btn btn-success fw-bold px-4 shadow-sm">
             <i class="bi bi-file-earmark-word me-1"></i> Télécharger le Rapport Word (.docx)
           </button>
         </div>
@@ -291,15 +357,17 @@
       checks.forEach(c => c.checked = false);
     } else if (type === 'minimal') {
       checks.forEach(c => {
-        c.checked = ['x_pt', 'sigma_pt', 'u_xpt', 'U_xpt'].includes(c.value);
+        c.checked = ['x_pt', 'sigma_pt', 'u_xpt', 'U_xpt', 'z_score'].includes(c.value);
       });
     } else if (type === 'iso') {
       const isoSet = [
         'x_pt', 'sigma_pt', 'u_xpt', 'U_xpt', 'u_ratio',
-        'alg_a_mean', 'alg_a_sd', 'median', 'made',
-        'mean_arith', 'sd_arith', 'cv_percent', 'min_max',
-        'horwitz', 'horrat', 'grubbs', 'grubbs_double',
-        'normality', 'kurt_skew', 'mandel_h', 'consensus', 'kappa'
+        'alg_a_mean', 'alg_a_sd', 'median', 'made', 'niqr', 'm_estimator',
+        'mean_arith', 'sd_arith', 'se_mean', 'cv_percent', 'min_max',
+        'horwitz', 'horwitz_rsd', 'horrat', 'grubbs', 'grubbs_double', 'boxplot',
+        'normality', 'droite_henry', 'kurt_skew', 'mandel_h',
+        'z_score', 'z_prime', 'en_score',
+        'consensus', 'kappa'
       ];
       checks.forEach(c => {
         c.checked = isoSet.includes(c.value);
