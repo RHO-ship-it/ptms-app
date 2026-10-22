@@ -36,6 +36,41 @@ def create_app(config_class=Config):
                                    ("submissions", "excluded_at", "DATETIME")):
             if _col not in {c["name"] for c in _insp.get_columns(_table)}:
                 db.session.execute(_sa_text(f"ALTER TABLE {_table} ADD COLUMN {_col} {_ddl}"))
+        # Initialisation automatique des comptes de base (notamment sur Render)
+        try:
+            from models import User, Laboratory
+            admin = User.query.filter_by(username="admin").first()
+            if not admin:
+                import os
+                admin_pwd = os.environ.get("ADMIN_PASSWORD", "admin123")
+                admin = User(
+                    username="admin",
+                    email="admin@ptms.local",
+                    full_name="Administrateur Système",
+                    role="admin",
+                    active=True,
+                )
+                admin.set_password(admin_pwd)
+                db.session.add(admin)
+                db.session.commit()
+                print("Compte administrateur initialisé avec succès.")
+            
+            # Chef technique
+            if not User.query.filter_by(username="chef.technique").first():
+                chef = User(
+                    username="chef.technique",
+                    email="chef.technique@ptms.local",
+                    full_name="Chef Technique",
+                    role="chef_technique",
+                    active=True,
+                )
+                chef.set_password("chef123")
+                db.session.add(chef)
+                db.session.commit()
+        except Exception as _e:
+            db.session.rollback()
+            print(f"Note initialisation comptes: {_e}")
+
         db.session.commit()
 
     from models import User
