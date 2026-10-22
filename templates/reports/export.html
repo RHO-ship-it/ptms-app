@@ -184,141 +184,34 @@
     </div>
   </div>
 
-  <div class="report-panel mb-4">
+    <div class="report-panel mb-4">
     <div class="panel-head">
       <h5 class="mb-0"><i class="bi bi-file-earmark-word me-2"></i>Rapport final complet (structure type TTS)</h5>
     </div>
     <div class="panel-body">
       <p class="text-muted small mb-3">
-        Document Word éditable reprenant la structure d'un rapport d'essais d'aptitude
-        (portée, confidentialité, paramètres demandés, calendrier, participants, statistiques
-        par essai, synthèse de performance, recommandations, conclusion).
+        Document Word éditable reprenant la structure complète d'un rapport d'essais d'aptitude (ISO/IEC 17043).
+        Vous pouvez télécharger le rapport standard directement, ou <strong>personnaliser l'ensemble des estimateurs statistiques</strong> (Algorithme A, Médiane, Horwitz, Grubbs, Normalité Lilliefors, Mandel h, etc.).
       </p>
       <div class="table-responsive">
         <table class="table table-hover report-table mb-0">
-          <thead><tr><th>Référence</th><th>Nom</th><th>Export</th></tr></thead>
+          <thead><tr><th>Référence</th><th>Nom</th><th>Actions d'export</th></tr></thead>
           <tbody>
           {% for c in campaigns %}
               <tr class="report-filter-row" data-campaign="{{ c.reference }}">
-                  <td>{{ c.reference }}</td>
+                  <td class="fw-bold text-primary">{{ c.reference }}</td>
                   <td>{{ c.name }}</td>
                   <td>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
-                      <a href="{{ url_for('reports.export_full_report_word', campaign_id=c.id) }}" class="btn btn-sm btn-primary" title="Export avec les estimateurs par défaut"><i class="bi bi-file-earmark-word"></i> Rapport Word (standard)</a>
-                      <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#estimatorsModal-{{ c.id }}">
-                        <i class="bi bi-sliders"></i> Choisir les estimateurs
+                      <a href="{{ url_for('reports.export_full_report_word', campaign_id=c.id) }}" class="btn btn-sm btn-primary" title="Export direct Word avec les estimateurs standards">
+                        <i class="bi bi-file-earmark-word"></i> Rapport Word (standard)
+                      </a>
+                      <a href="{{ url_for('reports.configure_report', campaign_id=c.id) }}" class="btn btn-sm btn-outline-primary" title="Ouvrir la page de configuration avancée de tous les estimateurs">
+                        <i class="bi bi-sliders"></i> Choisir les estimateurs (Complet)
+                      </a>
+                      <button type="button" class="btn btn-sm btn-outline-dark" data-bs-toggle="modal" data-bs-target="#estModal-{{ c.id }}" title="Ouvrir la fenêtre rapide de sélection">
+                        <i class="bi bi-ui-checks"></i> Sélecteur rapide
                       </button>
-                    </div>
-
-                    <!-- Modal de personnalisation des estimateurs pour la campagne {{ c.reference }} -->
-                    <div class="modal fade text-start" id="estimatorsModal-{{ c.id }}" tabindex="-1" aria-labelledby="estModalLabel-{{ c.id }}" aria-hidden="true">
-                      <div class="modal-dialog modal-lg">
-                        <div class="modal-content">
-                          <form method="POST" action="{{ url_for('reports.export_full_report_word', campaign_id=c.id) }}">
-                            <div class="modal-header bg-light">
-                              <h5 class="modal-title" id="estModalLabel-{{ c.id }}">
-                                <i class="bi bi-sliders text-primary me-2"></i>Sélection des estimateurs — {{ c.reference }}
-                              </h5>
-                              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
-                            </div>
-                            <div class="modal-body">
-                              <p class="text-muted small mb-3">
-                                Cochez les estimateurs statistiques et tests métrologiques à inclure dans la <strong>Section 6 (Statistiques et Résultats)</strong> du rapport Word.
-                              </p>
-
-                              <div class="row g-3">
-                                <div class="col-md-6">
-                                  <div class="card h-100 border-0 bg-light p-3">
-                                    <h6 class="fw-bold text-primary mb-2"><i class="bi bi-bullseye me-1"></i> Consensus & Incertitude</h6>
-                                    <div class="form-check mb-2">
-                                      <input class="form-check-input" type="checkbox" name="estimators" value="x_pt" id="est_xpt_{{ c.id }}" checked>
-                                      <label class="form-check-label fw-semibold" for="est_xpt_{{ c.id }}">Valeur assignée consensus (x_pt)</label>
-                                      <div class="text-muted small">Moyenne robuste Algorithme A ou valeur cible</div>
-                                    </div>
-                                    <div class="form-check mb-2">
-                                      <input class="form-check-input" type="checkbox" name="estimators" value="sigma_pt" id="est_sig_{{ c.id }}" checked>
-                                      <label class="form-check-label fw-semibold" for="est_sig_{{ c.id }}">Écart-type d'aptitude (σ_pt)</label>
-                                      <div class="text-muted small">Dispersion pour le calcul du z-score</div>
-                                    </div>
-                                    <div class="form-check mb-2">
-                                      <input class="form-check-input" type="checkbox" name="estimators" value="u_xpt" id="est_uxpt_{{ c.id }}" checked>
-                                      <label class="form-check-label fw-semibold" for="est_uxpt_{{ c.id }}">Incertitude-type u(x_pt)</label>
-                                      <div class="text-muted small">ISO 13528 §5.5 (u = 1.25 · s* / √p)</div>
-                                    </div>
-                                    <div class="form-check">
-                                      <input class="form-check-input" type="checkbox" name="estimators" value="U_xpt" id="est_Uxpt_{{ c.id }}" checked>
-                                      <label class="form-check-label fw-semibold" for="est_Uxpt_{{ c.id }}">Incertitude élargie U(x_pt)</label>
-                                      <div class="text-muted small">Facteur k = 2 (niveau de confiance ~95%)</div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div class="col-md-6">
-                                  <div class="card h-100 border-0 bg-light p-3">
-                                    <h6 class="fw-bold text-success mb-2"><i class="bi bi-graph-up me-1"></i> Statistiques Classiques & Robustes</h6>
-                                    <div class="form-check mb-2">
-                                      <input class="form-check-input" type="checkbox" name="estimators" value="mean_arith" id="est_mean_{{ c.id }}" checked>
-                                      <label class="form-check-label" for="est_mean_{{ c.id }}">Moyenne arithmétique classique (x̄)</label>
-                                    </div>
-                                    <div class="form-check mb-2">
-                                      <input class="form-check-input" type="checkbox" name="estimators" value="sd_arith" id="est_sd_{{ c.id }}" checked>
-                                      <label class="form-check-label" for="est_sd_{{ c.id }}">Écart-type classique (s)</label>
-                                    </div>
-                                    <div class="form-check mb-2">
-                                      <input class="form-check-input" type="checkbox" name="estimators" value="median" id="est_med_{{ c.id }}" checked>
-                                      <label class="form-check-label" for="est_med_{{ c.id }}">Médiane robuste (x_med)</label>
-                                    </div>
-                                    <div class="form-check mb-2">
-                                      <input class="form-check-input" type="checkbox" name="estimators" value="made" id="est_made_{{ c.id }}">
-                                      <label class="form-check-label" for="est_made_{{ c.id }}">Écart-type robuste MADe (1.4826 · MAD)</label>
-                                    </div>
-                                    <div class="form-check">
-                                      <input class="form-check-input" type="checkbox" name="estimators" value="horwitz" id="est_horw_{{ c.id }}">
-                                      <label class="form-check-label" for="est_horw_{{ c.id }}">Écart-type prédictif de Horwitz (σ_Horwitz)</label>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div class="col-12">
-                                  <div class="card border-0 bg-light p-3">
-                                    <h6 class="fw-bold text-dark mb-2"><i class="bi bi-shield-check me-1"></i> Tests de Validation & Cohérence</h6>
-                                    <div class="row g-2">
-                                      <div class="col-md-4">
-                                        <div class="form-check">
-                                          <input class="form-check-input" type="checkbox" name="estimators" value="grubbs" id="est_grubbs_{{ c.id }}" checked>
-                                          <label class="form-check-label" for="est_grubbs_{{ c.id }}">Test de Grubbs (simple & double)</label>
-                                        </div>
-                                      </div>
-                                      <div class="col-md-4">
-                                        <div class="form-check">
-                                          <input class="form-check-input" type="checkbox" name="estimators" value="normality" id="est_norm_{{ c.id }}" checked>
-                                          <label class="form-check-label" for="est_norm_{{ c.id }}">Test de normalité (Lilliefors / KS)</label>
-                                        </div>
-                                      </div>
-                                      <div class="col-md-4">
-                                        <div class="form-check">
-                                          <input class="form-check-input" type="checkbox" name="estimators" value="mandel_h" id="est_mandel_{{ c.id }}" checked>
-                                          <label class="form-check-label" for="est_mandel_{{ c.id }}">Statistique h de Mandel (ISO 5725-2)</label>
-                                        </div>
-                                      </div>
-                                      <div class="col-md-4">
-                                        <div class="form-check">
-                                          <input class="form-check-input" type="checkbox" name="estimators" value="kurt_skew" id="est_shape_{{ c.id }}">
-                                          <label class="form-check-label" for="est_shape_{{ c.id }}">Kurtosis & Skewness</label>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                            <div class="modal-footer bg-light">
-                              <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Annuler</button>
-                              <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-file-earmark-word me-1"></i> Générer le rapport Word personnalisé</button>
-                            </div>
-                          </form>
-                        </div>
-                      </div>
                     </div>
                   </td>
               </tr>
@@ -331,22 +224,194 @@
     </div>
   </div>
 </div>
-{% endblock %}
 
-{% block extra_scripts %}
+<!-- ========================================================================= -->
+<!-- MODALES DE SÉLECTION PLACÉES AU NIVEAU RACINE (HORS TABLE) POUR ÉVITER LE BLOCAGE -->
+<!-- ========================================================================= -->
+{% for c in campaigns %}
+<div class="modal fade" id="estModal-{{ c.id }}" tabindex="-1" aria-labelledby="modalTitle-{{ c.id }}" aria-hidden="true" style="z-index: 1065;">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow-lg">
+      <form method="POST" action="{{ url_for('reports.export_full_report_word', campaign_id=c.id) }}">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="modalTitle-{{ c.id }}">
+            <i class="bi bi-sliders me-2"></i>Estimateurs statistiques pour le rapport — {{ c.reference }}
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fermer"></button>
+        </div>
+        <div class="modal-body p-4 bg-light">
+          <!-- Barre de boutons rapides -->
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 bg-white p-3 rounded border">
+            <span class="small fw-bold text-muted text-uppercase"><i class="bi bi-magic me-1"></i>Sélection rapide :</span>
+            <div class="d-flex gap-2 flex-wrap">
+              <button type="button" class="btn btn-sm btn-outline-primary" onclick="setModalPreset('{{ c.id }}', 'iso')">Recommandé ISO</button>
+              <button type="button" class="btn btn-sm btn-outline-dark" onclick="setModalPreset('{{ c.id }}', 'all')">Tout cocher</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setModalPreset('{{ c.id }}', 'minimal')">Minimal (z seul)</button>
+              <button type="button" class="btn btn-sm btn-outline-danger" onclick="setModalPreset('{{ c.id }}', 'none')">Tout décocher</button>
+            </div>
+          </div>
+
+          <div class="row g-3">
+            <!-- 1. Valeur assignée & Incertitudes -->
+            <div class="col-md-6">
+              <div class="card h-100 border-0 shadow-sm p-3">
+                <h6 class="fw-bold text-primary mb-2"><i class="bi bi-bullseye me-1"></i> 1. Valeur assignée & Incertitudes</h6>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="x_pt" id="m_xpt_{{ c.id }}" checked>
+                  <label class="form-check-label fw-semibold" for="m_xpt_{{ c.id }}">Valeur assignée consensus (x_pt)</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="sigma_pt" id="m_sig_{{ c.id }}" checked>
+                  <label class="form-check-label fw-semibold" for="m_sig_{{ c.id }}">Écart-type d'aptitude (σ_pt)</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="u_xpt" id="m_uxpt_{{ c.id }}" checked>
+                  <label class="form-check-label fw-semibold" for="m_uxpt_{{ c.id }}">Incertitude-type standard u(x_pt)</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="U_xpt" id="m_Uxpt_{{ c.id }}" checked>
+                  <label class="form-check-label fw-semibold" for="m_Uxpt_{{ c.id }}">Incertitude élargie U(x_pt) (k = 2)</label>
+                </div>
+                <div class="form-check form-switch">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="u_ratio" id="m_uratio_{{ c.id }}" checked>
+                  <label class="form-check-label fw-semibold" for="m_uratio_{{ c.id }}">Ratio d'incertitude u / σ_pt (≤ 0.3)</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. Statistiques Robustes -->
+            <div class="col-md-6">
+              <div class="card h-100 border-0 shadow-sm p-3">
+                <h6 class="fw-bold text-success mb-2"><i class="bi bi-shield-check me-1"></i> 2. Statistiques Robustes (ISO 13528)</h6>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="alg_a_mean" id="m_alga_m_{{ c.id }}" checked>
+                  <label class="form-check-label" for="m_alga_m_{{ c.id }}">Moyenne robuste Algorithme A (x*)</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="alg_a_sd" id="m_alga_s_{{ c.id }}" checked>
+                  <label class="form-check-label" for="m_alga_s_{{ c.id }}">Écart-type robuste Algorithme A (s*)</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="median" id="m_med_{{ c.id }}" checked>
+                  <label class="form-check-label" for="m_med_{{ c.id }}">Médiane robuste (x_med)</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="made" id="m_made_{{ c.id }}" checked>
+                  <label class="form-check-label" for="m_made_{{ c.id }}">Écart-type robuste MADe (1.4826 · MAD)</label>
+                </div>
+                <div class="form-check form-switch">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="hampel_q" id="m_hampel_{{ c.id }}">
+                  <label class="form-check-label" for="m_hampel_{{ c.id }}">Estimateur robuste Q / Hampel</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- 3. Statistiques Classiques -->
+            <div class="col-md-6">
+              <div class="card h-100 border-0 shadow-sm p-3">
+                <h6 class="fw-bold text-info mb-2"><i class="bi bi-graph-up me-1"></i> 3. Statistiques Classiques</h6>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="mean_arith" id="m_mean_{{ c.id }}" checked>
+                  <label class="form-check-label" for="m_mean_{{ c.id }}">Moyenne arithmétique classique (x̄)</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="sd_arith" id="m_sd_{{ c.id }}" checked>
+                  <label class="form-check-label" for="m_sd_{{ c.id }}">Écart-type classique (s)</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="cv_percent" id="m_cv_{{ c.id }}" checked>
+                  <label class="form-check-label" for="m_cv_{{ c.id }}">Coefficient de variation (CV %)</label>
+                </div>
+                <div class="form-check form-switch">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="min_max" id="m_minmax_{{ c.id }}" checked>
+                  <label class="form-check-label" for="m_minmax_{{ c.id }}">Valeurs extrêmes (Min, Max, Étendue)</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4. Modèles Horwitz & HorRat -->
+            <div class="col-md-6">
+              <div class="card h-100 border-0 shadow-sm p-3">
+                <h6 class="fw-bold text-warning mb-2"><i class="bi bi-calculator me-1"></i> 4. Modèles Prédictifs & Horwitz</h6>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="horwitz" id="m_horw_{{ c.id }}" checked>
+                  <label class="form-check-label" for="m_horw_{{ c.id }}">Écart-type de Horwitz (σ_Horwitz)</label>
+                </div>
+                <div class="form-check form-switch">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="horrat" id="m_horrat_{{ c.id }}" checked>
+                  <label class="form-check-label" for="m_horrat_{{ c.id }}">Ratio de HorRat (s / σ_Horwitz)</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- 5. Détection Valeurs Aberrantes -->
+            <div class="col-md-6">
+              <div class="card h-100 border-0 shadow-sm p-3">
+                <h6 class="fw-bold text-danger mb-2"><i class="bi bi-exclamation-triangle me-1"></i> 5. Détection des Valeurs Aberrantes</h6>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="grubbs" id="m_grubbs_{{ c.id }}" checked>
+                  <label class="form-check-label" for="m_grubbs_{{ c.id }}">Test de Grubbs simple (valeur unique)</label>
+                </div>
+                <div class="form-check form-switch">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="grubbs_double" id="m_gdouble_{{ c.id }}" checked>
+                  <label class="form-check-label" for="m_gdouble_{{ c.id }}">Test de Grubbs double (paire aberrante)</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- 6. Normalité, Forme & Cohérence -->
+            <div class="col-md-6">
+              <div class="card h-100 border-0 shadow-sm p-3">
+                <h6 class="fw-bold text-dark mb-2"><i class="bi bi-bezier2 me-1"></i> 6. Normalité & Mandel h (ISO 5725)</h6>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="normality" id="m_norm_{{ c.id }}" checked>
+                  <label class="form-check-label" for="m_norm_{{ c.id }}">Test de normalité Lilliefors (ISO 13528)</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="mandel_h" id="m_mandel_{{ c.id }}" checked>
+                  <label class="form-check-label" for="m_mandel_{{ c.id }}">Statistique h de Mandel (Tableau 4 ISO)</label>
+                </div>
+                <div class="form-check form-switch">
+                  <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="kurt_skew" id="m_kurt_{{ c.id }}" checked>
+                  <label class="form-check-label" for="m_kurt_{{ c.id }}">Asymétrie & Aplatissement (Skewness / Kurtosis)</label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer bg-white border-top">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fermer</button>
+          <a href="{{ url_for('reports.configure_report', campaign_id=c.id) }}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-fullscreen me-1"></i> Mode plein écran
+          </a>
+          <button type="submit" class="btn btn-success btn-sm fw-bold">
+            <i class="bi bi-file-earmark-word me-1"></i> Générer le Rapport Word (.docx)
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
 <script>
-  (function () {
-    const filter = document.getElementById('campaign-filter');
-    if (!filter) return;
-    const apply = function () {
-      const value = filter.value;
-      document.querySelectorAll('.report-filter-row').forEach(function (row) {
-        const visible = !value || value === 'all' || row.dataset.campaign === value;
-        row.style.display = visible ? '' : 'none';
+  function setModalPreset(cid, type) {
+    const checks = document.querySelectorAll('.mcheck-' + cid);
+    if (type === 'all') {
+      checks.forEach(c => c.checked = true);
+    } else if (type === 'none') {
+      checks.forEach(c => c.checked = false);
+    } else if (type === 'minimal') {
+      checks.forEach(c => {
+        c.checked = ['x_pt', 'sigma_pt', 'u_xpt', 'U_xpt'].includes(c.value);
       });
-    };
-    filter.addEventListener('change', apply);
-    apply();
-  })();
+    } else if (type === 'iso') {
+      const isoSet = ['x_pt', 'sigma_pt', 'u_xpt', 'U_xpt', 'u_ratio', 'alg_a_mean', 'alg_a_sd', 'median', 'made', 'mean_arith', 'sd_arith', 'cv_percent', 'min_max', 'horwitz', 'horrat', 'grubbs', 'grubbs_double', 'normality', 'mandel_h', 'kurt_skew'];
+      checks.forEach(c => {
+        c.checked = isoSet.includes(c.value);
+      });
+    }
+  }
 </script>
 {% endblock %}
+

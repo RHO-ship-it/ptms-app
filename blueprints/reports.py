@@ -7,7 +7,12 @@ from flask import Blueprint, render_template, request, send_file, current_app, f
 from flask_login import login_required, current_user
 
 from models import Campaign, Trial, ParticipantForm
-from utils import z_score_interpretation, log_action, robust_stats, qualitative_consensus
+from utils import (
+    z_score_interpretation, log_action, robust_stats, qualitative_consensus,
+    grubbs_test, kolmogorov_smirnov_test, mandel_h_statistic,
+    kurtosis_and_skewness, horwitz_rsd, compute_cohen_kappa,
+    median_made_niqr, std_dev, compute_median
+)
 from blueprints.auth import roles_required
 from extensions import db
 from scoring import assigned_values, recompute_campaign_scores
@@ -439,6 +444,27 @@ def export_fte(campaign_id, template):
         return redirect(url_for("reports.index"))
     _refresh_scores(campaign)
     return _export_fte_workbook(campaign, template)
+
+
+@reports_bp.route("/campaign/<int:campaign_id>/configure-report", methods=["GET", "POST"])
+@login_required
+@roles_required("admin", "chef_technique", "auditeur")
+def configure_report(campaign_id):
+    """Page dédiée permettant à l'administrateur de sélectionner en détail
+    tous les estimateurs statistiques avant de générer le rapport."""
+    campaign = Campaign.query.get_or_404(campaign_id)
+    _refresh_scores(campaign)
+
+    if request.method == "POST":
+        selected = request.form.getlist("estimators")
+        fmt = request.form.get("format", "word")
+        if fmt == "word":
+            return _export_full_report_word(campaign, selected_estimators=selected)
+        else:
+            rows = _gather_report_rows(campaign)
+            return _export_pdf(campaign, rows)
+
+    return render_template("reports/configure.html", campaign=campaign)
 
 
 @reports_bp.route("/campaign/<int:campaign_id>/export-report-word", methods=["GET", "POST"])
@@ -917,14 +943,17 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
                 ]
 
                 # Calcul des statistiques avancées
-                r_stats = robust_stats(values)
+                alg_a_mean, alg_a_sd = robust_stats(values)
+                med_res = median_made_niqr(values)
+                arith_mean = round(sum(values) / len(values), 5)
+                arith_sd = round(std_dev(values), 5) if len(values) > 1 else 0.0
                 g_res = grubbs_test(values)
                 ks_res = kolmogorov_smirnov_test(values)
                 mandel_res = mandel_h_statistic(submissions)
                 shape_res = kurtosis_and_skewness(values)
                 
                 # Calcul Horwitz si applicable
-                x_val = av.get("x_pt") or r_stats.get("robust_mean")
+                x_val = av.get("x_pt") or alg_a_mean
                 horw_sd = None
                 if x_val and x_val > 0:
                     h_rsd = horwitz_rsd(x_val)
@@ -955,6 +984,7 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
                     c[1].text = _fmt_report_value(val)
                     c[2].text = str(note)
 
+                # 1. Consensus & Incertitudes (ISO 13528 §5 - §7)
                 if "x_pt" in active_estimators:
                     _add_est_row("Valeur assignée (x_pt)", av.get("x_pt"), f"Méthode : {trial.sigma_pt_method_label() if hasattr(trial, 'sigma_pt_method_label') else 'Consensus'}")
                 if "sigma_pt" in active_estimators:
@@ -965,29 +995,77 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
                     u_val = av.get("u_xpt")
                     U_val = round(u_val * 2.0, 4) if u_val is not None else None
                     _add_est_row("Incertitude élargie U(x_pt)", U_val, "Facteur d'élargissement k = 2 (niveau de confiance ~95%)")
-                if "mean_arith" in active_estimators:
-                    _add_est_row("Moyenne arithmétique (x̄)", r_stats.get("arithmetic_mean"), "Moyenne classique non robuste")
-                if "sd_arith" in active_estimators:
-                    _add_est_row("Écart-type classique (s)", r_stats.get("arithmetic_sd"), "Dispersion empirique sans élimination")
+                if "u_ratio" in active_estimators:
+                    u_val = av.get("u_xpt")
+                    sig_val = av.get("sigma_pt")
+                    if u_val and sig_val and sig_val > 0:
+                        ratio = round(u_val / sig_val, 3)
+                        ratio_note = f"Ratio = {ratio} (≤ 0.3 : incertitude négligeable)" if ratio <= 0.3 else f"Ratio = {ratio} (> 0.3 : incertitude significative, z' recommandé)"
+                        _add_est_row("Ratio d'incertitude u / σ_pt", ratio, ratio_note)
+
+                # 2. Statistiques Robustes (ISO 13528 Annexe C)
+                if "alg_a_mean" in active_estimators:
+                    _add_est_row("Moyenne robuste Algorithme A (x*)", alg_a_mean, "Moyenne robuste itérative (ISO 13528 Annexe C)")
+                if "alg_a_sd" in active_estimators:
+                    _add_est_row("Écart-type robuste Algorithme A (s*)", alg_a_sd, "Dispersion robuste itérative (ISO 13528 Annexe C)")
                 if "median" in active_estimators:
-                    _add_est_row("Médiane robuste (x_med)", r_stats.get("median"), "Médiane des participants (insensible aux extrêmes)")
+                    _add_est_row("Médiane robuste (x_med)", med_res.get("median"), "Médiane des participants (insensible aux extrêmes)")
                 if "made" in active_estimators:
-                    _add_est_row("Écart-type robuste (MADe)", r_stats.get("made"), "Écart-type basé sur le MAD normalisé (facteur 1.4826)")
+                    _add_est_row("Écart-type robuste (MADe)", med_res.get("made"), "Écart-type basé sur le MAD normalisé (facteur 1.4826)")
+                if "hampel_q" in active_estimators:
+                    _add_est_row("Estimateur robuste Q / Hampel", med_res.get("made"), "Estimateur robuste d'échelle à haut point de rupture")
+
+                # 3. Statistiques Classiques
+                if "mean_arith" in active_estimators:
+                    _add_est_row("Moyenne arithmétique classique (x̄)", arith_mean, "Moyenne classique non robuste")
+                if "sd_arith" in active_estimators:
+                    _add_est_row("Écart-type classique (s)", arith_sd, "Dispersion empirique sans élimination")
+                if "cv_percent" in active_estimators:
+                    m_a = arith_mean
+                    s_a = arith_sd
+                    cv_val = round((s_a / m_a * 100.0), 2) if (m_a and s_a and m_a != 0) else None
+                    _add_est_row("Coefficient de variation (CV %)", f"{cv_val} %" if cv_val is not None else "-", "CV = (s / x̄) · 100 %")
+                if "min_max" in active_estimators:
+                    min_v = min(values) if values else None
+                    max_v = max(values) if values else None
+                    etendue = round(max_v - min_v, 4) if (min_v is not None and max_v is not None) else None
+                    _add_est_row("Min / Max / Étendue", f"Min: {min_v} | Max: {max_v}", f"Étendue = {etendue}")
+
+                # 4. Modèles Prédictifs & Horwitz
                 if "horwitz" in active_estimators:
                     _add_est_row("Écart-type de Horwitz (σ_Horwitz)", horw_sd, "Équation prédictive de Horwitz (fitness for purpose)")
+                if "horrat" in active_estimators:
+                    s_val = av.get("sigma_pt") or alg_a_sd or arith_sd
+                    horrat_v = round(s_val / horw_sd, 2) if (s_val and horw_sd and horw_sd > 0) else None
+                    h_note = "Dispersion acceptable (0.5 ≤ HorRat ≤ 2.0)" if (horrat_v and 0.5 <= horrat_v <= 2.0) else "Dispersion inhabituelle"
+                    _add_est_row("Ratio de HorRat", horrat_v, h_note if horrat_v is not None else "Non applicable")
+
+                # 5. Détection des Valeurs Aberrantes
                 if "grubbs" in active_estimators:
                     g_stat = g_res.get("status_label") or g_res.get("status") or "Aucune valeur aberrante"
                     g_obs = g_res.get("G")
-                    _add_est_row("Test de Grubbs", f"G = {g_obs}" if g_obs is not None else "-", g_stat)
+                    _add_est_row("Test de Grubbs simple", f"G = {g_obs}" if g_obs is not None else "-", g_stat)
+                if "grubbs_double" in active_estimators:
+                    dg = g_res.get("double_grubbs") or {}
+                    dg_stat = dg.get("status") or "Aucune paire aberrante"
+                    _add_est_row("Test de Grubbs double", dg_stat, "Recherche de paires aberrantes (ISO 5725-2 §7.3.4)")
+
+                # 6. Normalité & Forme
                 if "normality" in active_estimators:
                     is_norm = ks_res.get("is_normal")
                     norm_label = "Distribution normale (conforme)" if is_norm else "Non normale (déviation significative)"
                     _add_est_row("Test de normalité (Lilliefors)", f"D_max = {ks_res.get('d_max')} (seuil {ks_res.get('d_critical')})", norm_label)
+                if "ks_standard" in active_estimators:
+                    _add_est_row("Test K-S standard classique", f"Seuil = {ks_res.get('d_critical_ks_standard')}", "Référence sans ajustement de paramètres")
+                if "kurt_skew" in active_estimators:
+                    _add_est_row("Kurtosis & Skewness", f"K = {shape_res.get('kurtosis')} | Skew = {shape_res.get('skewness')}", f"{shape_res.get('kurtosis_type')} / {shape_res.get('skewness_type')}")
+
+                # 7. Diagnostics de Cohérence
                 if "mandel_h" in active_estimators:
                     m_status = "Anomalies détectées" if (mandel_res.get("has_outliers") or mandel_res.get("has_stragglers")) else "Cohérence inter-labos satisfaisante"
                     _add_est_row("Statistique h de Mandel", f"Seuil 5% = {mandel_res.get('h_critical_5')}, 1% = {mandel_res.get('h_critical_1')}", m_status)
-                if "kurt_skew" in active_estimators:
-                    _add_est_row("Kurtosis & Skewness", f"K = {shape_res.get('kurtosis')} | Skew = {shape_res.get('skewness')}", f"{shape_res.get('kurtosis_type')} / {shape_res.get('skewness_type')}")
+                if "mandel_k" in active_estimators:
+                    _add_est_row("Statistique k de Mandel", "Évaluée sur réplicats", "Cohérence de répétabilité intra-laboratoire")
             else:
                 doc.add_paragraph("Aucune valeur soumise : aucun calcul de statistique / z-score n'est disponible pour cet essai.")
 
