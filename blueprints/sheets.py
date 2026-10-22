@@ -17,6 +17,7 @@ from flask_login import login_required, current_user
 from extensions import db
 from models import (Campaign, CampaignLaboratory, Trial, ParticipantForm, Submission, SheetIdentification)
 from utils import log_action, notify_role, compute_z_score, compute_en
+from scoring import fixed_scores
 from blueprints.auth import roles_required
 
 sheets_bp = Blueprint("sheets", __name__, template_folder="../templates/sheets")
@@ -586,8 +587,7 @@ def _compute(trial, sheet, vals):
             return None
         out["value"] = round(value, 10)
         out["replicate_2"] = nums[1] if len(nums) > 1 else None
-        out["z"], out["anomaly"] = compute_z_score(value, trial.target_value, trial.target_sd)
-        out["en"], _ = compute_en(value, out["uncertainty"], trial.target_value, trial.reference_uncertainty)
+        out["z"], out["anomaly"], out["en"] = fixed_scores(trial, value, out["uncertainty"])
     elif kind == "solidite":
         try:
             nums = {k: (_grade_to_float(v) if v else None) for k, v in dyes.items()}

@@ -10,8 +10,9 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 
 from extensions import db
-from models import ParticipantForm, Submission, Trial, Campaign, Laboratory
-from utils import (log_action, notify_role, compute_z_score, z_score_interpretation,
+from models import ParticipantForm, Submission, Trial, Campaign, Laboratory, User
+from scoring import fixed_scores
+from utils import (log_action, notify, notify_role, compute_z_score, z_score_interpretation,
                     qualitative_consensus, compute_en, SOLIDITE_PARAMS, parse_solidite_data)
 from blueprints.auth import roles_required
 
@@ -131,10 +132,10 @@ def submit_form(form_id):
             value = float(request.form["value"])
             replicate_2_str = request.form.get("replicate_2", "")
             replicate_2 = float(replicate_2_str) if replicate_2_str else None
-            z, anomaly = compute_z_score(value, form.trial.target_value, form.trial.target_sd)
             uncertainty_str = request.form.get("uncertainty", "")
             lab_uncertainty = float(uncertainty_str) if uncertainty_str else None
-            en, _en_conform = compute_en(value, lab_uncertainty, form.trial.target_value, form.trial.reference_uncertainty)
+            # z (ou z' si u(x_pt) > 0,3 sigma_pt) et En avec la convention ISO 13528 (scoring.py)
+            z, anomaly, en = fixed_scores(form.trial, value, lab_uncertainty)
         elif trial_type == "solidite":
             values = {}
             for prm in SOLIDITE_PARAMS:
@@ -514,7 +515,10 @@ def reject_submission(form_id):
 
     log_action("reject", "Submission", form.id,
                f"Rejet de la soumission pour {form.trial.name} / {form.laboratory.code} : {reason}")
-    notify_role("participant", f"Votre soumission pour {form.trial.name} nécessite une correction.")
+    # Notifier uniquement le(s) compte(s) du laboratoire concerné (et non tous les participants)
+    for lab_user in User.query.filter_by(laboratory_id=form.laboratory_id, role="participant").all():
+        notify(lab_user.id, f"Votre soumission pour {form.trial.name} nécessite une correction.",
+               link=url_for("participants.portal"))
     flash("Soumission rejetée, le laboratoire a été notifié.", "info")
     return redirect(url_for("participants.validation_center", campaign_id=campaign_id))
 

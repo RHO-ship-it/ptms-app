@@ -345,8 +345,9 @@
               <input type="number" step="any" name="target_sd" class="form-control" value="{{ stats.target_sd }}" placeholder="Écart-type">
             </div>
             <div class="col-md-2">
-              <label class="form-label small fw-semibold">u(x<sub>pt</sub>)</label>
-              <input type="number" step="any" name="reference_uncertainty" class="form-control" value="{{ stats.ref_unc }}" placeholder="Incertitude">
+              <label class="form-label small fw-semibold">U(x<sub>pt</sub>) <span class="text-muted">k=2</span></label>
+              <input type="number" step="any" name="reference_uncertainty" class="form-control" value="{{ stats.ref_unc }}" placeholder="Incertitude élargie"
+                     title="Incertitude ÉLARGIE U(x_pt), k=2. En utilise U ; z' utilise u = U/2 (ISO 13528).">
             </div>
             <div class="col-md-3 d-flex align-items-end">
               <button type="submit" class="btn btn-success w-100">
@@ -586,13 +587,14 @@
               <th>En</th>
               <th class="text-center">Grubbs</th>
               <th>IFR</th>
+              <th>Traitement</th>
             </tr>
           </thead>
           <tbody>
             {% for p in participant_results %}
-            <tr class="{{ 'table-warning' if p.z_badge == 'warning' else ('table-danger' if p.z_badge == 'danger' else '') }}">
+            <tr class="{{ 'table-secondary' if p.excluded else ('table-warning' if p.z_badge == 'warning' else ('table-danger' if p.z_badge == 'danger' else '')) }}">
               <td>
-                <div class="fw-bold">{{ p.lab_code }}</div>
+                <div class="fw-bold">{{ p.lab_code }}{% if p.excluded %} <span class="badge bg-dark">Exclu du calcul</span>{% endif %}</div>
                 <div class="small text-muted">{{ p.lab_name }}</div>
               </td>
               <td class="fw-bold">{{ p.value }}</td>
@@ -627,9 +629,29 @@
                 <div class="small text-muted">{{ p.ifr.label }}</div>
                 {% else %}—{% endif %}
               </td>
+              <td style="min-width:230px;">
+                {% if current_user.role in ('admin', 'chef_technique') and not selected_trial.campaign.report_published %}
+                  {% if p.excluded %}
+                  <div class="small text-muted mb-1" title="Motif">{{ p.exclusion_reason }}</div>
+                  <form method="post" action="{{ url_for('traitement.toggle_exclusion', submission_id=p.submission_id) }}">
+                    <input type="hidden" name="action" value="include">
+                    <button class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-counterclockwise me-1"></i>Réintégrer</button>
+                  </form>
+                  {% else %}
+                  <form method="post" action="{{ url_for('traitement.toggle_exclusion', submission_id=p.submission_id) }}" class="d-flex gap-1"
+                        onsubmit="return confirm('Exclure ce résultat du calcul de x_pt et σ_pt ? (il restera évalué)');">
+                    <input type="hidden" name="action" value="exclude">
+                    <input type="text" name="reason" class="form-control form-control-sm" placeholder="Motif (obligatoire)" required maxlength="300">
+                    <button class="btn btn-sm btn-outline-danger" title="Exclure du traitement"><i class="bi bi-slash-circle"></i></button>
+                  </form>
+                  {% endif %}
+                {% elif p.excluded %}
+                  <span class="small text-muted">{{ p.exclusion_reason }}</span>
+                {% else %}—{% endif %}
+              </td>
             </tr>
             {% else %}
-            <tr><td colspan="9" class="text-center text-muted py-4">Aucun résultat soumis</td></tr>
+            <tr><td colspan="10" class="text-center text-muted py-4">Aucun résultat soumis</td></tr>
             {% endfor %}
           </tbody>
         </table>

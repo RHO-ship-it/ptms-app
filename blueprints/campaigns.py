@@ -157,6 +157,8 @@ def publish_report(campaign_id):
         flash("La campagne doit être clôturée avant de publier le rapport.", "warning")
         return redirect(url_for("campaigns.view_campaign", campaign_id=campaign.id))
         
+    from scoring import recompute_campaign_scores
+    recompute_campaign_scores(campaign)          # scores finaux cohérents avant gel du rapport
     campaign.report_published = True
     db.session.commit()
     log_action("publish", "Campaign", campaign.id, f"Publication du rapport pour {campaign.reference}")

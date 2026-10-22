@@ -163,7 +163,7 @@
           <tbody>
             {% for row in ts.rows %}
             <tr class="{% if row.grubbs_outlier %}table-danger{% endif %}">
-              <td><span class="fw-semibold font-monospace">{{ row.lab }}</span></td>
+              <td><span class="fw-semibold font-monospace">{{ row.lab }}</span>{% if row.excluded %} <span class="badge bg-dark" title="{{ row.exclusion_reason }}">Exclu du calcul</span>{% endif %}</td>
               <td>{{ "%.4f"|format(row.value) if row.value is not none else '—' }}</td>
               <td>{{ "%.4f"|format(row.replicate_2) if row.replicate_2 is not none else '—' }}</td>
               <td>

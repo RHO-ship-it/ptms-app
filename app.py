@@ -29,7 +29,11 @@ def create_app(config_class=Config):
                                    ("campaigns", "final_report_path", "VARCHAR(255)"),
                                    ("trials", "sheet_key", "VARCHAR(40)"),
                                    ("trials", "scale", "TEXT"),
-                                   ("submissions", "extra_data", "TEXT")):
+                                   ("submissions", "extra_data", "TEXT"),
+                                   ("submissions", "excluded_from_stats", "BOOLEAN NOT NULL DEFAULT 0"),
+                                   ("submissions", "exclusion_reason", "VARCHAR(300)"),
+                                   ("submissions", "excluded_by", "INTEGER"),
+                                   ("submissions", "excluded_at", "DATETIME")):
             if _col not in {c["name"] for c in _insp.get_columns(_table)}:
                 db.session.execute(_sa_text(f"ALTER TABLE {_table} ADD COLUMN {_col} {_ddl}"))
         db.session.commit()

@@ -9,6 +9,16 @@ from flask_login import login_required, current_user
 from models import Campaign, Trial, ParticipantForm
 from utils import z_score_interpretation, log_action, robust_stats, qualitative_consensus
 from blueprints.auth import roles_required
+from extensions import db
+from scoring import assigned_values, recompute_campaign_scores
+
+
+def _refresh_scores(campaign):
+    """Remet à jour z / En enregistrés avant un export (valeurs assignées, exclusions et incertitudes
+    à jour). Un rapport publié est figé : ses scores ne sont plus recalculés."""
+    if not campaign.report_published:
+        recompute_campaign_scores(campaign)
+        db.session.commit()
 
 reports_bp = Blueprint("reports", __name__, template_folder="../templates/reports")
 
@@ -67,6 +77,7 @@ def _gather_report_rows(campaign):
 @roles_required("admin", "chef_technique", "auditeur")
 def export_campaign(campaign_id, fmt):
     campaign = Campaign.query.get_or_404(campaign_id)
+    _refresh_scores(campaign)
     rows = _gather_report_rows(campaign)
 
     if fmt == "excel":
@@ -426,6 +437,7 @@ def export_fte(campaign_id, template):
     if template not in ("fte004", "fte008"):
         flash("Modèle FTE inconnu.", "danger")
         return redirect(url_for("reports.index"))
+    _refresh_scores(campaign)
     return _export_fte_workbook(campaign, template)
 
 
@@ -436,6 +448,7 @@ def export_full_report_word(campaign_id):
     """Rapport final complet au format Word, avec la structure du rapport
     TTS Proficiency Testing (sections, tableaux, résumé statistique)."""
     campaign = Campaign.query.get_or_404(campaign_id)
+    _refresh_scores(campaign)
     return _export_full_report_word(campaign)
 
 
@@ -886,13 +899,14 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None):
         if trial.trial_type == "quantitative":
             values = [s.value for s in submissions if s.value is not None]
             if values:
-                median, robust_sd = robust_stats(values)
-                x_star = trial.target_value if trial.target_value is not None else median
-                s_star = trial.target_sd if trial.target_sd is not None else robust_sd
+                av = assigned_values(trial, submissions)          # même source que les z-scores enregistrés
+                n_excl = sum(1 for s in submissions if s.excluded_from_stats)
                 doc.add_paragraph(
                     f"Nombre de participants : {len(values)}   |   "
-                    f"Valeur consensuelle x* : {_fmt_report_value(x_star)}   |   "
-                    f"Écart-type s* : {_fmt_report_value(s_star)}"
+                    f"Valeur assignée x_pt : {_fmt_report_value(av['x_pt'])}   |   "
+                    f"Écart-type d'aptitude σ_pt : {_fmt_report_value(av['sigma_pt'])}   |   "
+                    f"u(x_pt) : {_fmt_report_value(av['u_xpt'])}"
+                    + (f"   |   Résultats exclus du calcul de x_pt/σ_pt : {n_excl}" if n_excl else "")
                 )
             else:
                 doc.add_paragraph("Aucune valeur soumise : aucun calcul de statistique / z-score n'est disponible pour cet essai.")
@@ -916,7 +930,7 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None):
                 cells[0].text = _lab_label(s.form.laboratory)
                 cells[1].text = _fmt_report_value(s.value)
                 cells[2].text = _fmt_report_value(s.z_score)
-                cells[3].text = interp
+                cells[3].text = interp + (" (exclu du calcul de x_pt/σ_pt)" if s.excluded_from_stats else "")
                 cells[4].text = "Oui" if s.validated else "Non"
 
         else:

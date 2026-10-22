@@ -11,6 +11,7 @@ from utils import (
     compute_en,
 )
 from blueprints.auth import roles_required
+from scoring import assigned_values, trial_submissions, estimation_values, score_result
 
 statistics_bp = Blueprint("statistics", __name__, template_folder="../templates/statistics")
 
@@ -29,22 +30,20 @@ def index(campaign_id=None):
             submissions = [f.submission for f in trial.forms if f.submission]
 
             if trial.trial_type == "quantitative":
-                values = [s.value for s in submissions if s.value is not None]
-                alg_a_res = algorithm_a(values) if values else {"x_pt": None, "sigma_pt": None, "u_xpt": None, "U_xpt": None}
+                # Estimation de x_pt / sigma_pt sur les résultats NON exclus par l'administrateur ;
+                # tous les résultats (exclus compris) restent évalués.
+                values = estimation_values(submissions)
                 grubbs = grubbs_test(values) if len(values) >= 3 else None
+                av = assigned_values(trial, submissions)
 
-                target_val = trial.target_value if trial.target_value is not None else alg_a_res["x_pt"]
-                target_sd = trial.target_sd if trial.target_sd is not None else alg_a_res["sigma_pt"]
-                ref_unc = trial.reference_uncertainty if trial.reference_uncertainty is not None else alg_a_res["u_xpt"]
-
-                z_prime_recommended = False
-                if ref_unc is not None and target_sd and target_sd > 0:
-                    z_prime_recommended = ref_unc >= (0.3 * target_sd)
+                target_val, target_sd = av["x_pt"], av["sigma_pt"]
+                ref_unc, U_ref = av["u_xpt"], av["U_xpt"]      # u (z') et U (En), convention ISO 13528
+                z_prime_recommended = av["z_prime"]
 
                 rows = []
                 for s in submissions:
                     is_outlier = grubbs and s.value in (grubbs.get("outliers_list") or [])
-                    z, _ = compute_z_score(s.value, target_val, target_sd, u_xpt=ref_unc)
+                    z, _, en_calc, _ = score_result(s.value, s.uncertainty, av)
                     interp, interp_badge = z_score_interpretation(z)
                     rows.append({
                         "lab": s.form.laboratory.code,
@@ -55,7 +54,9 @@ def index(campaign_id=None):
                         "z_badge": interp_badge,
                         "validated": s.validated,
                         "grubbs_outlier": is_outlier,
-                        "en_score": s.en_score,
+                        "excluded": bool(s.excluded_from_stats),
+                        "exclusion_reason": s.exclusion_reason,
+                        "en_score": en_calc,
                     })
 
                 n_min = trial.min_participants or 8
@@ -73,7 +74,7 @@ def index(campaign_id=None):
                     "target_val": target_val,
                     "target_sd": target_sd,
                     "u_xpt": ref_unc,
-                    "U_xpt": round(ref_unc * 2.0, 5) if ref_unc else None,
+                    "U_xpt": round(U_ref, 5) if U_ref is not None else None,
                     "z_prime_recommended": z_prime_recommended,
                     "grubbs": grubbs,
                     "rows": rows,

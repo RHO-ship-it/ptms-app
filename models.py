@@ -302,6 +302,12 @@ class Submission(db.Model):
     z_score = db.Column(db.Float, nullable=True)                # essais quantitatifs
     en_score = db.Column(db.Float, nullable=True)               # En (ISO 13528 §9.3), si incertitudes déclarées
     anomaly_flag = db.Column(db.Boolean, default=False)
+    # --- Exclusion du traitement statistique : décision de l'administrateur (ISO 13528 §6.6 / ISO 17043 §7.4) ---
+    # Un résultat exclu n'entre pas dans le calcul de x_pt / sigma_pt mais reste évalué (z, En).
+    excluded_from_stats = db.Column(db.Boolean, default=False, nullable=False, server_default="0")
+    exclusion_reason = db.Column(db.String(300), nullable=True)
+    excluded_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    excluded_at = db.Column(db.DateTime, nullable=True)
     grubbs_outlier = db.Column(db.Boolean, default=False)        # signalé par le test de Grubbs (quantitatif)
     qualitative_conform = db.Column(db.Boolean, nullable=True)   # conforme au consensus — essais qualitatifs/solidité
 
