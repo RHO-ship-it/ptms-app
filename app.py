@@ -73,9 +73,17 @@ def create_app(config_class=Config):
                 chef.set_password("chef123")
                 db.session.add(chef)
                 db.session.commit()
+
+            # Injection automatique des données réelles si la base est vide (ex: sur Render)
+            from models import Campaign
+            if Campaign.query.count() == 0:
+                print("Base vierge détectée sur Render. Injection de la campagne réelle...")
+                import seed_tts2602
+                seed_tts2602.run()
+                print("Campagne réelle TTS-T2602 injectée avec succès.")
         except Exception as _e:
             db.session.rollback()
-            print(f"Note initialisation comptes: {_e}")
+            print(f"Note initialisation comptes/données: {_e}")
 
         db.session.commit()
 
