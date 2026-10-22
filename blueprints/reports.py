@@ -441,15 +441,24 @@ def export_fte(campaign_id, template):
     return _export_fte_workbook(campaign, template)
 
 
-@reports_bp.route("/campaign/<int:campaign_id>/export-report-word")
+@reports_bp.route("/campaign/<int:campaign_id>/export-report-word", methods=["GET", "POST"])
 @login_required
 @roles_required("admin", "chef_technique", "auditeur")
 def export_full_report_word(campaign_id):
     """Rapport final complet au format Word, avec la structure du rapport
-    TTS Proficiency Testing (sections, tableaux, résumé statistique)."""
+    TTS Proficiency Testing (sections, tableaux, résumé statistique).
+    Permet à l'administrateur de sélectionner les estimateurs à inclure via paramètre ou formulaire."""
     campaign = Campaign.query.get_or_404(campaign_id)
     _refresh_scores(campaign)
-    return _export_full_report_word(campaign)
+
+    # Récupération de la liste des estimateurs sélectionnés
+    selected = request.form.getlist("estimators") or request.args.getlist("estimators")
+    if not selected:
+        raw = request.args.get("estimators", "")
+        if raw:
+            selected = [e.strip() for e in raw.split(",") if e.strip()]
+
+    return _export_full_report_word(campaign, selected_estimators=selected if selected else None)
 
 
 def _export_excel(campaign, rows):
@@ -768,7 +777,7 @@ def _export_fte_workbook(campaign, template):
 # Rapport final complet au format Word (structure inspirée du rapport TTS)
 # ---------------------------------------------------------------------------
 
-def _export_full_report_word(campaign, anonymous=False, own_lab=None):
+def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_estimators=None):
     from docx import Document
     from docx.shared import Pt, Cm, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -899,15 +908,86 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None):
         if trial.trial_type == "quantitative":
             values = [s.value for s in submissions if s.value is not None]
             if values:
-                av = assigned_values(trial, submissions)          # même source que les z-scores enregistrés
+                av = assigned_values(trial, submissions)
                 n_excl = sum(1 for s in submissions if s.excluded_from_stats)
-                doc.add_paragraph(
-                    f"Nombre de participants : {len(values)}   |   "
-                    f"Valeur assignée x_pt : {_fmt_report_value(av['x_pt'])}   |   "
-                    f"Écart-type d'aptitude σ_pt : {_fmt_report_value(av['sigma_pt'])}   |   "
-                    f"u(x_pt) : {_fmt_report_value(av['u_xpt'])}"
-                    + (f"   |   Résultats exclus du calcul de x_pt/σ_pt : {n_excl}" if n_excl else "")
-                )
+                
+                # Estimateurs par défaut si non spécifié
+                active_estimators = selected_estimators if selected_estimators else [
+                    "x_pt", "sigma_pt", "u_xpt", "U_xpt", "mean_arith", "sd_arith", "median", "grubbs", "normality"
+                ]
+
+                # Calcul des statistiques avancées
+                r_stats = robust_stats(values)
+                g_res = grubbs_test(values)
+                ks_res = kolmogorov_smirnov_test(values)
+                mandel_res = mandel_h_statistic(submissions)
+                shape_res = kurtosis_and_skewness(values)
+                
+                # Calcul Horwitz si applicable
+                x_val = av.get("x_pt") or r_stats.get("robust_mean")
+                horw_sd = None
+                if x_val and x_val > 0:
+                    h_rsd = horwitz_rsd(x_val)
+                    if h_rsd:
+                        horw_sd = round((h_rsd / 100.0) * x_val, 4)
+
+                # Paragraphe de synthèse
+                synth_parts = [
+                    f"Nombre de participants : {len(values)}",
+                    f"Valeur assignée x_pt : {_fmt_report_value(av.get('x_pt'))}",
+                    f"σ_pt : {_fmt_report_value(av.get('sigma_pt'))}",
+                    f"u(x_pt) : {_fmt_report_value(av.get('u_xpt'))}",
+                ]
+                if n_excl:
+                    synth_parts.append(f"Exclus : {n_excl}")
+                doc.add_paragraph("   |   ".join(synth_parts))
+
+                # Tableau détaillé des estimateurs sélectionnés
+                doc.add_paragraph("Tableau des estimateurs statistiques (ISO 13528 / ISO 5725-2) :", style="Intense Quote")
+                est_table = doc.add_table(rows=1, cols=3)
+                est_table.style = "Light Grid Accent 1"
+                ehdr = est_table.rows[0].cells
+                ehdr[0].text, ehdr[1].text, ehdr[2].text = "Estimateur", "Valeur", "Méthode / Interprétation"
+
+                def _add_est_row(label, val, note):
+                    c = est_table.add_row().cells
+                    c[0].text = str(label)
+                    c[1].text = _fmt_report_value(val)
+                    c[2].text = str(note)
+
+                if "x_pt" in active_estimators:
+                    _add_est_row("Valeur assignée (x_pt)", av.get("x_pt"), f"Méthode : {trial.sigma_pt_method_label() if hasattr(trial, 'sigma_pt_method_label') else 'Consensus'}")
+                if "sigma_pt" in active_estimators:
+                    _add_est_row("Écart-type d'aptitude (σ_pt)", av.get("sigma_pt"), "Écart-type cible pour le calcul des z-scores")
+                if "u_xpt" in active_estimators:
+                    _add_est_row("Incertitude-type u(x_pt)", av.get("u_xpt"), "Incertitude standard de la valeur assignée (ISO 13528 §5.5)")
+                if "U_xpt" in active_estimators:
+                    u_val = av.get("u_xpt")
+                    U_val = round(u_val * 2.0, 4) if u_val is not None else None
+                    _add_est_row("Incertitude élargie U(x_pt)", U_val, "Facteur d'élargissement k = 2 (niveau de confiance ~95%)")
+                if "mean_arith" in active_estimators:
+                    _add_est_row("Moyenne arithmétique (x̄)", r_stats.get("arithmetic_mean"), "Moyenne classique non robuste")
+                if "sd_arith" in active_estimators:
+                    _add_est_row("Écart-type classique (s)", r_stats.get("arithmetic_sd"), "Dispersion empirique sans élimination")
+                if "median" in active_estimators:
+                    _add_est_row("Médiane robuste (x_med)", r_stats.get("median"), "Médiane des participants (insensible aux extrêmes)")
+                if "made" in active_estimators:
+                    _add_est_row("Écart-type robuste (MADe)", r_stats.get("made"), "Écart-type basé sur le MAD normalisé (facteur 1.4826)")
+                if "horwitz" in active_estimators:
+                    _add_est_row("Écart-type de Horwitz (σ_Horwitz)", horw_sd, "Équation prédictive de Horwitz (fitness for purpose)")
+                if "grubbs" in active_estimators:
+                    g_stat = g_res.get("status_label") or g_res.get("status") or "Aucune valeur aberrante"
+                    g_obs = g_res.get("G")
+                    _add_est_row("Test de Grubbs", f"G = {g_obs}" if g_obs is not None else "-", g_stat)
+                if "normality" in active_estimators:
+                    is_norm = ks_res.get("is_normal")
+                    norm_label = "Distribution normale (conforme)" if is_norm else "Non normale (déviation significative)"
+                    _add_est_row("Test de normalité (Lilliefors)", f"D_max = {ks_res.get('d_max')} (seuil {ks_res.get('d_critical')})", norm_label)
+                if "mandel_h" in active_estimators:
+                    m_status = "Anomalies détectées" if (mandel_res.get("has_outliers") or mandel_res.get("has_stragglers")) else "Cohérence inter-labos satisfaisante"
+                    _add_est_row("Statistique h de Mandel", f"Seuil 5% = {mandel_res.get('h_critical_5')}, 1% = {mandel_res.get('h_critical_1')}", m_status)
+                if "kurt_skew" in active_estimators:
+                    _add_est_row("Kurtosis & Skewness", f"K = {shape_res.get('kurtosis')} | Skew = {shape_res.get('skewness')}", f"{shape_res.get('kurtosis_type')} / {shape_res.get('skewness_type')}")
             else:
                 doc.add_paragraph("Aucune valeur soumise : aucun calcul de statistique / z-score n'est disponible pour cet essai.")
 
@@ -937,10 +1017,13 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None):
             results = [s.qualitative_result for s in submissions if s.qualitative_result]
             if results:
                 consensus, agreement_rate, _ = qualitative_consensus(results)
+                kappa_res = compute_cohen_kappa(results)
+                k_val = kappa_res.get("kappa")
+                k_str = f"   |   Kappa de Cohen/Fleiss : {k_val} ({kappa_res.get('interpretation')})" if k_val is not None else ""
                 doc.add_paragraph(
                     f"Nombre de participants : {len(results)}   |   "
                     f"Résultat consensuel : {consensus or '-'}   |   "
-                    f"Taux d'accord : {agreement_rate}%"
+                    f"Taux d'accord : {agreement_rate}%" + k_str
                 )
             else:
                 consensus, agreement_rate = None, 0.0

@@ -90,9 +90,15 @@ def upload_report_document(campaign_id, kind):
         flash("Veuillez sélectionner un fichier à importer.", "warning")
         return redirect(url_for("campaigns.view_campaign", campaign_id=campaign.id))
 
+    filename = secure_filename(upload.filename)
+    extension = (os.path.splitext(filename)[1] or ".pdf").lower()
+    allowed_exts = {".pdf", ".docx", ".doc", ".xlsx", ".xls"}
+    if extension not in allowed_exts:
+        flash(f"Extension '{extension}' non autorisée. Formats acceptés : PDF, Word (.docx, .doc), Excel (.xlsx, .xls).", "danger")
+        return redirect(url_for("campaigns.view_campaign", campaign_id=campaign.id))
+
     storage_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "campaign_reports" / str(campaign.id)
     storage_dir.mkdir(parents=True, exist_ok=True)
-    extension = os.path.splitext(secure_filename(upload.filename))[1] or ".pdf"
     target_name = f"{kind}_report{extension}"
     target_path = storage_dir / target_name
     upload.save(target_path)

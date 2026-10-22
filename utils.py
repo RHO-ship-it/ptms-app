@@ -217,12 +217,46 @@ GRUBBS_FULL_TABLE = {
     100: (3.754, 3.383, None, None),
 }
 
-# Table Kolmogorov-Smirnov (alpha=0.05) pour n <= 50
+# Table Kolmogorov-Smirnov standard (alpha=0.05) pour n <= 50 (quand mu et sigma sont connus a priori)
 KS_CRITICAL_05 = {
     1: 0.975, 2: 0.842, 3: 0.708, 4: 0.624, 5: 0.565, 6: 0.521, 7: 0.486, 8: 0.457,
     9: 0.432, 10: 0.410, 11: 0.391, 12: 0.375, 13: 0.361, 14: 0.349, 15: 0.338,
     16: 0.328, 17: 0.318, 18: 0.309, 19: 0.301, 20: 0.294, 25: 0.270, 30: 0.240,
     35: 0.230, 40: 0.210, 45: 0.200, 50: 0.190,
+}
+
+# Table de Lilliefors (alpha=0.05 et alpha=0.01) - Test K-S adapte quand mu et sigma
+# sont ESTIMES a partir de l'echantillon (ISO 13528 / Lilliefors 1967 / Dallal-Wilkinson).
+# Corrige le conservatisme excessif de K-S standard.
+LILLIEFORS_CRITICAL_05 = {
+    4: 0.381, 5: 0.337, 6: 0.315, 7: 0.298, 8: 0.285, 9: 0.273,
+    10: 0.258, 11: 0.249, 12: 0.242, 13: 0.234, 14: 0.227, 15: 0.220,
+    16: 0.213, 17: 0.206, 18: 0.200, 19: 0.195, 20: 0.190, 21: 0.187,
+    22: 0.184, 23: 0.181, 24: 0.178, 25: 0.173, 26: 0.171, 27: 0.168,
+    28: 0.166, 29: 0.163, 30: 0.161, 35: 0.149, 40: 0.140, 45: 0.132, 50: 0.125,
+}
+LILLIEFORS_CRITICAL_01 = {
+    4: 0.417, 5: 0.405, 6: 0.364, 7: 0.348, 8: 0.331, 9: 0.311,
+    10: 0.294, 11: 0.284, 12: 0.275, 13: 0.268, 14: 0.261, 15: 0.257,
+    16: 0.250, 17: 0.245, 18: 0.239, 19: 0.235, 20: 0.231, 25: 0.200,
+    30: 0.187, 35: 0.172, 40: 0.162, 45: 0.153, 50: 0.145,
+}
+
+# Table exacte de Mandel h (ISO 5725-2, Tableau 4) pour alpha = 0.05 (avertissement / 5%)
+# et alpha = 0.01 (action / 1%). Remplace l'approximation lineaire.
+MANDEL_H_TABLE_05 = {
+    3: 1.15, 4: 1.42, 5: 1.57, 6: 1.66, 7: 1.71, 8: 1.75, 9: 1.78, 10: 1.80,
+    11: 1.82, 12: 1.83, 13: 1.84, 14: 1.85, 15: 1.86, 16: 1.86, 17: 1.87, 18: 1.88,
+    19: 1.88, 20: 1.89, 21: 1.90, 22: 1.90, 23: 1.91, 24: 1.91, 25: 1.91,
+    26: 1.92, 27: 1.92, 28: 1.93, 29: 1.93, 30: 1.93, 35: 1.94, 40: 1.95,
+    50: 1.96, 60: 1.97, 80: 1.98, 100: 1.98,
+}
+MANDEL_H_TABLE_01 = {
+    3: 1.15, 4: 1.49, 5: 1.72, 6: 1.87, 7: 1.98, 8: 2.06, 9: 2.13, 10: 2.18,
+    11: 2.22, 12: 2.25, 13: 2.27, 14: 2.29, 15: 2.31, 16: 2.33, 17: 2.34, 18: 2.36,
+    19: 2.37, 20: 2.38, 21: 2.40, 22: 2.41, 23: 2.42, 24: 2.42, 25: 2.43,
+    26: 2.44, 27: 2.45, 28: 2.46, 29: 2.46, 30: 2.47, 35: 2.50, 40: 2.52,
+    50: 2.55, 60: 2.57, 80: 2.60, 100: 2.62,
 }
 
 # Facteurs Algorithme S (ISO 13528 §C.3.2 / Procédure TTS §5.2)
@@ -830,40 +864,70 @@ def boxplot_stats(values):
     }
 
 
-def kolmogorov_smirnov_test(values):
+def kolmogorov_smirnov_test(values, use_lilliefors=True):
     """
-    Test de Kolmogorov-Smirnov conforme à la Procédure TTS §A1.6.
-    Compare la distribution observée à la distribution théorique normale.
-    Hypothèse H0 acceptée si D_max <= D_KS.
+    Test de normalité conforme à la Procédure TTS §A1.6 et ISO 13528.
+    Lorsque la moyenne et l'écart-type sont estimés à partir des données de l'essai
+    (cas standard des essais d'aptitude), la variante de Lilliefors est appliquée
+    car les valeurs critiques du K-S classique sont excessivement conservatrices.
+    Hypothèse H0 acceptée si D_max <= D_crit.
     """
     p = len(values)
     if p < 3:
-        return {"d_max": None, "d_critical": None, "is_normal": False}
+        return {
+            "d_max": None, "d_critical": None, "is_normal": False,
+            "d_critical_lilliefors": None, "d_critical_ks_standard": None,
+            "test_name": "Insuffisant",
+        }
 
     sorted_vals = sorted(values)
     mean_val = sum(values) / p
     sd_val = std_dev(values)
 
     if sd_val == 0:
-        return {"d_max": 0.0, "d_critical": 1.0, "is_normal": True}
+        return {
+            "d_max": 0.0, "d_critical": 1.0, "is_normal": True,
+            "d_critical_lilliefors": 1.0, "d_critical_ks_standard": 1.0,
+            "test_name": "Lilliefors (paramètres estimés)",
+        }
 
+    # Calcul rigoureux du supremum D_max avec les deux paliers de la fonction en escalier
     d_max = 0.0
     for i, x in enumerate(sorted_vals, 1):
         f_obs = i / float(p)
+        f_obs_prev = (i - 1) / float(p)
         f_theo = normal_cdf((x - mean_val) / sd_val)
-        d = abs(f_obs - f_theo)
-        if d > d_max:
-            d_max = d
+        d_max = max(d_max, abs(f_obs - f_theo), abs(f_obs_prev - f_theo))
 
-    if p <= 50:
-        d_crit = KS_CRITICAL_05.get(p, 1.36 / math.sqrt(p))
+    # Seuil de Lilliefors (alpha = 0.05) - adapté aux paramètres estimés
+    if p in LILLIEFORS_CRITICAL_05:
+        d_crit_lilliefors = LILLIEFORS_CRITICAL_05[p]
+    elif p < 4:
+        d_crit_lilliefors = 0.381
+    elif p <= 50:
+        prev_k = max(k for k in LILLIEFORS_CRITICAL_05 if k <= p)
+        next_k = min(k for k in LILLIEFORS_CRITICAL_05 if k >= p)
+        if prev_k == next_k:
+            d_crit_lilliefors = LILLIEFORS_CRITICAL_05[prev_k]
+        else:
+            w = (p - prev_k) / (next_k - prev_k)
+            d_crit_lilliefors = LILLIEFORS_CRITICAL_05[prev_k] + w * (LILLIEFORS_CRITICAL_05[next_k] - LILLIEFORS_CRITICAL_05[prev_k])
     else:
-        d_crit = 1.36 / math.sqrt(p)
+        d_crit_lilliefors = 0.886 / math.sqrt(p)
+
+    # Seuil K-S classique (alpha = 0.05) pour traçabilité comparative
+    d_crit_standard = KS_CRITICAL_05.get(p, 1.36 / math.sqrt(p))
+
+    d_crit = d_crit_lilliefors if use_lilliefors else d_crit_standard
 
     return {
         "d_max": round(d_max, 4),
         "d_critical": round(d_crit, 4),
+        "d_critical_lilliefors": round(d_crit_lilliefors, 4),
+        "d_critical_ks_standard": round(d_crit_standard, 4),
         "is_normal": d_max <= d_crit,
+        "test_name": "Lilliefors (ISO 13528 / paramètres estimés)" if use_lilliefors else "Kolmogorov-Smirnov standard",
+        "method": "lilliefors" if use_lilliefors else "ks_standard",
     }
 
 
@@ -1024,17 +1088,18 @@ def compute_stability(first_value, last_value, sigma_pt):
 # NOUVELLES FONCTIONS STATISTIQUES AVANCÉES
 # ===========================================================================
 
-def compute_cohen_kappa(results_list):
+def compute_cohen_kappa(results_list, reference_result=None):
     """
-    Coefficient Kappa de Cohen pour essais qualitatifs (ISO 13528 §9.5 / ISO 17043).
-    Mesure l'accord inter-laboratoires au-delà du hasard.
+    Coefficient de concordance pour essais qualitatifs (ISO 13528 §9.5 / ISO 17043).
+    - Mesure l'accord inter-laboratoires au-dela du hasard (concordance multi-evaluateurs).
+    - Permet la comparaison avec un resultat de reference ou consensus.
     kappa = (P_o - P_e) / (1 - P_e)
-    Interprétation :
+    Interprétation (Landis & Koch, 1977 / ISO 13528) :
         kappa >= 0.81 → Accord quasi-parfait
-        0.61-0.80    → Accord fort
-        0.41-0.60    → Accord modéré
-        0.21-0.40    → Accord faible
-        <= 0.20      → Accord très faible / aléatoire
+        0.61 - 0.80   → Accord fort
+        0.41 - 0.60   → Accord modere
+        0.21 - 0.40   → Accord faible
+        <= 0.20       → Accord tres faible / aleatoire
     """
     cleaned = [r.strip().lower() for r in results_list if r]
     n = len(cleaned)
@@ -1042,23 +1107,33 @@ def compute_cohen_kappa(results_list):
         return {
             "kappa": None, "interpretation": "Données insuffisantes",
             "badge": "secondary", "p_observed": None, "p_expected": None,
+            "se_kappa": None, "z_kappa": None,
         }
 
     counts = Counter(cleaned)
-    categories = list(counts.keys())
     total = n
 
-    # P_o : proportion observée de l'accord (tous d'accord avec le consensus)
     consensus = counts.most_common(1)[0][0]
-    p_observed = counts[consensus] / total
+    target = reference_result.strip().lower() if reference_result else consensus
 
-    # P_e : proportion d'accord attendue par hasard
-    p_expected = sum((count / total) ** 2 for count in counts.values())
+    # Accord observe P_o : proportion en accord avec la reference/consensus
+    p_observed = counts.get(target, 0) / float(total)
+
+    # Accord attendu P_e par hasard sous independance
+    p_expected = sum((count / float(total)) ** 2 for count in counts.values())
 
     if p_expected >= 1.0:
         kappa = 1.0
     else:
         kappa = (p_observed - p_expected) / (1.0 - p_expected)
+
+    # Erreur standard asymptotique et score Z pour tester H0: kappa = 0
+    if p_expected < 1.0 and total > 0:
+        se_kappa = math.sqrt(max(1e-9, p_expected / (float(total) * (1.0 - p_expected))))
+        z_kappa = kappa / se_kappa if se_kappa > 0 else 0.0
+    else:
+        se_kappa = 0.0
+        z_kappa = 0.0
 
     kappa = round(kappa, 4)
 
@@ -1079,9 +1154,12 @@ def compute_cohen_kappa(results_list):
         "badge": badge,
         "p_observed": round(p_observed, 4),
         "p_expected": round(p_expected, 4),
+        "se_kappa": round(se_kappa, 4),
+        "z_kappa": round(z_kappa, 2),
         "n": n,
         "categories": {k: v for k, v in counts.items()},
         "consensus": consensus,
+        "reference_result": reference_result,
     }
 
 
@@ -1260,12 +1338,14 @@ def solidite_matrix_stats(submissions, solidite_params=None):
     }
 
 
-def mandel_h_statistic(submissions, target_val, target_sd):
+def mandel_h_statistic(submissions, target_val=None, target_sd=None):
     """
     Statistique h de Mandel (ISO 5725-2 / ISO 13528) pour évaluation de la fidélité
-    inter-laboratoires. Détecte les laboratoires avec biais systématique.
+    inter-laboratoires et détection des biais systématiques.
     h_i = (y_i - y_bar) / sqrt(sum((y_j - y_bar)^2) / (p-1))
-    Critères : |h| > h_crit(5%) → biais significatif
+    Seuils exacts selon ISO 5725-2 Tableau 4 :
+      - Seuil 5% (vigilance / straggler) : |h| > h_crit(5%)
+      - Seuil 1% (action / anomalie critique) : |h| > h_crit(1%)
     """
     values = []
     lab_codes = []
@@ -1276,26 +1356,62 @@ def mandel_h_statistic(submissions, target_val, target_sd):
 
     p = len(values)
     if p < 3:
-        return {"results": [], "h_critical": None, "n": p}
+        return {
+            "results": [], "h_critical": None, "h_critical_5": None,
+            "h_critical_1": None, "n": p, "has_outliers": False, "has_stragglers": False,
+        }
 
     mean_all = sum(values) / p
     ss = sum((v - mean_all) ** 2 for v in values)
     denom = math.sqrt(ss / (p - 1)) if ss > 0 else 1e-9
 
-    # Valeur critique de h (approximation standard, p. ex. table ISO 5725-2)
-    # h_crit(5%, p) ≈ (p-1)/sqrt(p) * t(5%/p, p-2) — approximation simplifiée
-    # On utilise la formule h_crit ≈ 1 + 3.5/sqrt(p) (approximation pratique)
-    h_critical = round(1.0 + 3.5 / math.sqrt(p), 3)
+    # Recherche des valeurs critiques exactes selon la table ISO 5725-2
+    if p in MANDEL_H_TABLE_05:
+        h_crit_5 = MANDEL_H_TABLE_05[p]
+        h_crit_1 = MANDEL_H_TABLE_01[p]
+    elif p <= 100:
+        prev_k = max(k for k in MANDEL_H_TABLE_05 if k <= p)
+        next_k = min(k for k in MANDEL_H_TABLE_05 if k >= p)
+        if prev_k == next_k:
+            h_crit_5 = MANDEL_H_TABLE_05[prev_k]
+            h_crit_1 = MANDEL_H_TABLE_01[prev_k]
+        else:
+            w = (p - prev_k) / (next_k - prev_k)
+            h_crit_5 = MANDEL_H_TABLE_05[prev_k] + w * (MANDEL_H_TABLE_05[next_k] - MANDEL_H_TABLE_05[prev_k])
+            h_crit_1 = MANDEL_H_TABLE_01[prev_k] + w * (MANDEL_H_TABLE_01[next_k] - MANDEL_H_TABLE_01[prev_k])
+    else:
+        h_crit_5 = 1.98 + (p - 100) * 0.0002
+        h_crit_1 = 2.62 + (p - 100) * 0.0003
+
+    h_crit_5 = round(h_crit_5, 3)
+    h_crit_1 = round(h_crit_1, 3)
 
     results = []
+    has_stragglers = False
+    has_outliers = False
+
     for lab_code, val in zip(lab_codes, values):
         h = (val - mean_all) / denom
-        significant = abs(h) > h_critical
+        abs_h = abs(h)
+        is_outlier = abs_h > h_crit_1       # Seuil critique 1% (action)
+        is_straggler = abs_h > h_crit_5     # Seuil 5% (vigilance)
+        if is_outlier:
+            status = "outlier"
+            has_outliers = True
+        elif is_straggler:
+            status = "straggler"
+            has_stragglers = True
+        else:
+            status = "ok"
+
         results.append({
             "lab_code": lab_code,
             "value": val,
             "h": round(h, 3),
-            "significant": significant,
+            "status": status,
+            "significant": is_straggler,
+            "is_outlier": is_outlier,
+            "is_straggler": is_straggler,
         })
 
     # Trier par |h| décroissant
@@ -1303,7 +1419,11 @@ def mandel_h_statistic(submissions, target_val, target_sd):
 
     return {
         "results": results,
-        "h_critical": h_critical,
+        "h_critical": h_crit_5,
+        "h_critical_5": h_crit_5,
+        "h_critical_1": h_crit_1,
+        "has_stragglers": has_stragglers,
+        "has_outliers": has_outliers,
         "n": p,
         "mean": round(mean_all, 5),
     }

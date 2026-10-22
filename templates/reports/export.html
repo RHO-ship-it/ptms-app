@@ -203,7 +203,123 @@
                   <td>{{ c.reference }}</td>
                   <td>{{ c.name }}</td>
                   <td>
-                      <a href="{{ url_for('reports.export_full_report_word', campaign_id=c.id) }}" class="btn btn-sm btn-primary"><i class="bi bi-file-earmark-word"></i> Rapport complet (Word)</a>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                      <a href="{{ url_for('reports.export_full_report_word', campaign_id=c.id) }}" class="btn btn-sm btn-primary" title="Export avec les estimateurs par défaut"><i class="bi bi-file-earmark-word"></i> Rapport Word (standard)</a>
+                      <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#estimatorsModal-{{ c.id }}">
+                        <i class="bi bi-sliders"></i> Choisir les estimateurs
+                      </button>
+                    </div>
+
+                    <!-- Modal de personnalisation des estimateurs pour la campagne {{ c.reference }} -->
+                    <div class="modal fade text-start" id="estimatorsModal-{{ c.id }}" tabindex="-1" aria-labelledby="estModalLabel-{{ c.id }}" aria-hidden="true">
+                      <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                          <form method="POST" action="{{ url_for('reports.export_full_report_word', campaign_id=c.id) }}">
+                            <div class="modal-header bg-light">
+                              <h5 class="modal-title" id="estModalLabel-{{ c.id }}">
+                                <i class="bi bi-sliders text-primary me-2"></i>Sélection des estimateurs — {{ c.reference }}
+                              </h5>
+                              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                            </div>
+                            <div class="modal-body">
+                              <p class="text-muted small mb-3">
+                                Cochez les estimateurs statistiques et tests métrologiques à inclure dans la <strong>Section 6 (Statistiques et Résultats)</strong> du rapport Word.
+                              </p>
+
+                              <div class="row g-3">
+                                <div class="col-md-6">
+                                  <div class="card h-100 border-0 bg-light p-3">
+                                    <h6 class="fw-bold text-primary mb-2"><i class="bi bi-bullseye me-1"></i> Consensus & Incertitude</h6>
+                                    <div class="form-check mb-2">
+                                      <input class="form-check-input" type="checkbox" name="estimators" value="x_pt" id="est_xpt_{{ c.id }}" checked>
+                                      <label class="form-check-label fw-semibold" for="est_xpt_{{ c.id }}">Valeur assignée consensus (x_pt)</label>
+                                      <div class="text-muted small">Moyenne robuste Algorithme A ou valeur cible</div>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                      <input class="form-check-input" type="checkbox" name="estimators" value="sigma_pt" id="est_sig_{{ c.id }}" checked>
+                                      <label class="form-check-label fw-semibold" for="est_sig_{{ c.id }}">Écart-type d'aptitude (σ_pt)</label>
+                                      <div class="text-muted small">Dispersion pour le calcul du z-score</div>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                      <input class="form-check-input" type="checkbox" name="estimators" value="u_xpt" id="est_uxpt_{{ c.id }}" checked>
+                                      <label class="form-check-label fw-semibold" for="est_uxpt_{{ c.id }}">Incertitude-type u(x_pt)</label>
+                                      <div class="text-muted small">ISO 13528 §5.5 (u = 1.25 · s* / √p)</div>
+                                    </div>
+                                    <div class="form-check">
+                                      <input class="form-check-input" type="checkbox" name="estimators" value="U_xpt" id="est_Uxpt_{{ c.id }}" checked>
+                                      <label class="form-check-label fw-semibold" for="est_Uxpt_{{ c.id }}">Incertitude élargie U(x_pt)</label>
+                                      <div class="text-muted small">Facteur k = 2 (niveau de confiance ~95%)</div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                  <div class="card h-100 border-0 bg-light p-3">
+                                    <h6 class="fw-bold text-success mb-2"><i class="bi bi-graph-up me-1"></i> Statistiques Classiques & Robustes</h6>
+                                    <div class="form-check mb-2">
+                                      <input class="form-check-input" type="checkbox" name="estimators" value="mean_arith" id="est_mean_{{ c.id }}" checked>
+                                      <label class="form-check-label" for="est_mean_{{ c.id }}">Moyenne arithmétique classique (x̄)</label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                      <input class="form-check-input" type="checkbox" name="estimators" value="sd_arith" id="est_sd_{{ c.id }}" checked>
+                                      <label class="form-check-label" for="est_sd_{{ c.id }}">Écart-type classique (s)</label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                      <input class="form-check-input" type="checkbox" name="estimators" value="median" id="est_med_{{ c.id }}" checked>
+                                      <label class="form-check-label" for="est_med_{{ c.id }}">Médiane robuste (x_med)</label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                      <input class="form-check-input" type="checkbox" name="estimators" value="made" id="est_made_{{ c.id }}">
+                                      <label class="form-check-label" for="est_made_{{ c.id }}">Écart-type robuste MADe (1.4826 · MAD)</label>
+                                    </div>
+                                    <div class="form-check">
+                                      <input class="form-check-input" type="checkbox" name="estimators" value="horwitz" id="est_horw_{{ c.id }}">
+                                      <label class="form-check-label" for="est_horw_{{ c.id }}">Écart-type prédictif de Horwitz (σ_Horwitz)</label>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div class="col-12">
+                                  <div class="card border-0 bg-light p-3">
+                                    <h6 class="fw-bold text-dark mb-2"><i class="bi bi-shield-check me-1"></i> Tests de Validation & Cohérence</h6>
+                                    <div class="row g-2">
+                                      <div class="col-md-4">
+                                        <div class="form-check">
+                                          <input class="form-check-input" type="checkbox" name="estimators" value="grubbs" id="est_grubbs_{{ c.id }}" checked>
+                                          <label class="form-check-label" for="est_grubbs_{{ c.id }}">Test de Grubbs (simple & double)</label>
+                                        </div>
+                                      </div>
+                                      <div class="col-md-4">
+                                        <div class="form-check">
+                                          <input class="form-check-input" type="checkbox" name="estimators" value="normality" id="est_norm_{{ c.id }}" checked>
+                                          <label class="form-check-label" for="est_norm_{{ c.id }}">Test de normalité (Lilliefors / KS)</label>
+                                        </div>
+                                      </div>
+                                      <div class="col-md-4">
+                                        <div class="form-check">
+                                          <input class="form-check-input" type="checkbox" name="estimators" value="mandel_h" id="est_mandel_{{ c.id }}" checked>
+                                          <label class="form-check-label" for="est_mandel_{{ c.id }}">Statistique h de Mandel (ISO 5725-2)</label>
+                                        </div>
+                                      </div>
+                                      <div class="col-md-4">
+                                        <div class="form-check">
+                                          <input class="form-check-input" type="checkbox" name="estimators" value="kurt_skew" id="est_shape_{{ c.id }}">
+                                          <label class="form-check-label" for="est_shape_{{ c.id }}">Kurtosis & Skewness</label>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <div class="modal-footer bg-light">
+                              <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Annuler</button>
+                              <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-file-earmark-word me-1"></i> Générer le rapport Word personnalisé</button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
                   </td>
               </tr>
           {% else %}
