@@ -1,5 +1,35 @@
-   .venv/
-   venv/
-   __pycache__/
-   *.pyc
-   .env
+# ===== Environnement Python =====
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.*
+
+# ===== Fichiers sensibles — NE JAMAIS COMMITTER =====
+.secret_key
+ptms/.secret_key
+*.db
+*.sqlite
+*.sqlite3
+
+# ===== Fichiers compilés / caches =====
+*.cpython-*.pyc
+__pycache__/
+
+# ===== Uploads / exports locaux =====
+uploads/
+exports/*.xlsx
+exports/*.pdf
+exports/*.docx
+
+# ===== Données de développement =====
+seed_tts2602.py
+scratch_generate_tts.py
+desktop.ini
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
