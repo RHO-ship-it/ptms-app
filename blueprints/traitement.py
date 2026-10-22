@@ -1,5 +1,7 @@
 from flask import Blueprint, render_template, request, flash, redirect, url_for
-from flask_login import login_required
+from datetime import datetime
+
+from flask_login import login_required, current_user
 
 from extensions import db
 from models import Campaign, Trial, Submission, ParticipantForm
@@ -30,17 +32,21 @@ from utils import (
     SOLIDITE_PARAMS,
 )
 from blueprints.auth import roles_required
+from scoring import (assigned_values, estimation_values, score_result, recompute_scores,
+                     split_uncertainty, K_EXPANSION)
 
 traitement_bp = Blueprint("traitement", __name__, url_prefix="/traitement")
 
 
 def _process_quantitative(trial, submissions):
     """Calcule tous les indicateurs statistiques pour un essai quantitatif."""
-    values = [s.value for s in submissions if s.value is not None]
-    replicates_2 = [s.replicate_2 for s in submissions if s.replicate_2 is not None]
+    # Résultats exclus du traitement par l'administrateur : écartés des estimateurs, mais toujours évalués.
+    included = [s for s in submissions if not s.excluded_from_stats]
+    values = estimation_values(submissions)
+    replicates_2 = [s.replicate_2 for s in included if s.replicate_2 is not None]
     w_values = []
     if len(replicates_2) == len(values) and len(values) > 0:
-        w_values = [abs(s.value - s.replicate_2) for s in submissions
+        w_values = [abs(s.value - s.replicate_2) for s in included
                     if s.value is not None and s.replicate_2 is not None]
 
     alg_a = algorithm_a(values)
@@ -56,31 +62,31 @@ def _process_quantitative(trial, submissions):
     kurt_skew = kurtosis_and_skewness(values) if len(values) >= 3 else None
     kde = kernel_density_estimation(values) if len(values) >= 2 else []
 
-    target_val = trial.target_value if trial.target_value is not None else alg_a["x_pt"]
-    target_sd = trial.target_sd if trial.target_sd is not None else alg_a["sigma_pt"]
-    ref_unc = trial.reference_uncertainty if trial.reference_uncertainty is not None else alg_a["u_xpt"]
+    # Valeur assignée et incertitudes (convention ISO 13528 : U(x_pt) élargie k=2 stockée ; u = U/2 pour z' ;
+    # U pour En). Voir scoring.py.
+    av = assigned_values(trial, submissions, alg_a=alg_a)
+    target_val, target_sd = av["x_pt"], av["sigma_pt"]
+    u_xpt, U_xpt = av["u_xpt"], av["U_xpt"]
 
     check_u_criterion = None
-    z_prime_recommended = False
-    if ref_unc is not None and target_sd and target_sd > 0:
-        check_u_criterion = ref_unc < (0.3 * target_sd)
-        z_prime_recommended = not check_u_criterion
+    z_prime_recommended = av["z_prime"]
+    if u_xpt is not None and target_sd and target_sd > 0:
+        check_u_criterion = u_xpt <= (0.3 * target_sd)      # ISO 13528 §9.2 : u négligeable si u <= 0,3 sigma_pt
 
-    # Statistique h de Mandel
-    mandel = mandel_h_statistic(submissions, target_val, target_sd)
+    # Statistique h de Mandel (résultats non exclus)
+    mandel = mandel_h_statistic(included, target_val, target_sd)
 
     participant_results = []
     for s in submissions:
-        z, anomaly = compute_z_score(s.value, target_val, target_sd, u_xpt=ref_unc)
-        en, en_conform = compute_en(
-            s.value, s.uncertainty, target_val,
-            ref_unc * 2.0 if ref_unc else None
-        )
+        z, anomaly, en, en_conform = score_result(s.value, s.uncertainty, av)
         interp, interp_badge = z_score_interpretation(z)
         is_grubbs_out = grubbs and s.value in (grubbs.get("outliers_list") or [])
         ifr = compute_reliability_index(z, en, is_grubbs_outlier=bool(is_grubbs_out))
 
         participant_results.append({
+            "submission_id": s.id,
+            "excluded": bool(s.excluded_from_stats),
+            "exclusion_reason": s.exclusion_reason,
             "lab_code": s.form.laboratory.code,
             "lab_name": s.form.laboratory.name,
             "value": s.value,
@@ -114,7 +120,9 @@ def _process_quantitative(trial, submissions):
         "kde": kde,
         "target_val": target_val,
         "target_sd": target_sd,
-        "ref_unc": ref_unc,
+        "u_xpt": u_xpt,
+        "ref_unc": U_xpt,          # U(x_pt) élargie (k=2) : valeur pré-remplie dans le formulaire « Enregistrer »
+        "excluded_count": len(submissions) - len(included),
         "check_u_criterion": check_u_criterion,
         "z_prime_recommended": z_prime_recommended,
         "mandel": mandel,
@@ -388,7 +396,7 @@ def apply_stats(trial_id):
 
     target_val = request.form.get("target_value", type=float)
     target_sd = request.form.get("target_sd", type=float)
-    ref_unc = request.form.get("reference_uncertainty", type=float)
+    ref_unc = request.form.get("reference_uncertainty", type=float)   # U(x_pt), incertitude élargie k=2
 
     if method_choice == "algorithm_a":
         trial.sigma_pt_method = "robuste"
@@ -415,18 +423,51 @@ def apply_stats(trial_id):
 
     db.session.commit()
 
-    # Recalculer les z-scores et En-scores des participants pour cet essai
-    submissions = [f.submission for f in trial.forms if f.submission]
-    for s in submissions:
-        if trial.trial_type == "quantitative" and s.value is not None:
-            z, anomaly = compute_z_score(s.value, trial.target_value, trial.target_sd, u_xpt=trial.reference_uncertainty)
-            en, _ = compute_en(s.value, s.uncertainty, trial.target_value, trial.reference_uncertainty * 2.0 if trial.reference_uncertainty else None)
-            s.z_score = z
-            s.anomaly_flag = anomaly
-            s.en_score = en
-
+    # Recalculer les z-scores et En-scores des participants pour cet essai (logique commune, scoring.py)
+    recompute_scores(trial)
     db.session.commit()
 
     log_action("update_stats", "Trial", trial.id, f"Mise à jour des estimateurs de l'essai {trial.name} ({method_choice})")
     flash(f"Les estimateurs statistiques de l'essai '{trial.name}' ont été mis à jour avec succès.", "success")
     return redirect(url_for("traitement.atelier", trial_id=trial.id))
+
+
+@traitement_bp.route("/exclude/<int:submission_id>", methods=["POST"])
+@login_required
+@roles_required("admin", "chef_technique")
+def toggle_exclusion(submission_id):
+    """L'administrateur décide d'exclure (ou de réintégrer) un résultat du traitement statistique.
+    Le résultat exclu n'entre plus dans x_pt / sigma_pt mais reste évalué (z, En). Motif obligatoire."""
+    sub = Submission.query.get_or_404(submission_id)
+    trial = sub.form.trial
+    back = redirect(url_for("traitement.atelier", trial_id=trial.id))
+
+    if trial.campaign.report_published:
+        flash("Le rapport de cette campagne est publié : les exclusions ne peuvent plus être modifiées.", "warning")
+        return back
+
+    action = request.form.get("action", "exclude")
+    if action == "exclude":
+        reason = request.form.get("reason", "").strip()
+        if not reason:
+            flash("Un motif est obligatoire pour exclure un résultat du traitement (traçabilité ISO/IEC 17043).", "warning")
+            return back
+        sub.excluded_from_stats = True
+        sub.exclusion_reason = reason[:300]
+        sub.excluded_by = current_user.id
+        sub.excluded_at = datetime.utcnow()
+        log_action("exclude_result", "Submission", sub.id,
+                   f"Exclusion du traitement : {trial.name} / {sub.form.laboratory.code} — motif : {reason}")
+        flash(f"Résultat de {sub.form.laboratory.code} exclu du calcul de x_pt et σ_pt (il reste évalué).", "info")
+    else:
+        sub.excluded_from_stats = False
+        sub.exclusion_reason = None
+        sub.excluded_by = None
+        sub.excluded_at = None
+        log_action("include_result", "Submission", sub.id,
+                   f"Réintégration au traitement : {trial.name} / {sub.form.laboratory.code}")
+        flash(f"Résultat de {sub.form.laboratory.code} réintégré au traitement.", "success")
+
+    recompute_scores(trial)
+    db.session.commit()
+    return back

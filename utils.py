@@ -582,7 +582,9 @@ def horwitz_rsd(concentration_mass_fraction):
 def compute_z_score(value, target_value, target_sd, u_xpt=None):
     """
     Calcule le z-score ou z'-score selon ISO 13528 §9.2-9.4 / Procédure TTS §5.1.4.
-    Si u(x_pt) >= 0.3 * sigma_pt ou si u_xpt est fourni et significatif, z'-score est utilisé :
+    u_xpt est l'incertitude-TYPE u(x_pt) (et non l'incertitude élargie U = 2u).
+    Si u(x_pt) <= 0.3 * sigma_pt, elle est négligeable (ISO 13528 §9.2) -> z.
+    Si u(x_pt) > 0.3 * sigma_pt -> z'-score :
         z' = (x_i - X) / sqrt(sigma_pt^2 + u(x_pt)^2)
     """
     if value is None or target_value is None or not target_sd or target_sd <= 0:
@@ -590,7 +592,7 @@ def compute_z_score(value, target_value, target_sd, u_xpt=None):
 
     denom = target_sd
     use_z_prime = False
-    if u_xpt is not None and u_xpt >= 0.3 * target_sd:
+    if u_xpt is not None and u_xpt > 0.3 * target_sd:
         denom = math.sqrt(target_sd ** 2 + u_xpt ** 2)
         use_z_prime = True
 
@@ -697,26 +699,42 @@ def grubbs_test(values):
         outliers_list.append(candidate)
         status = "Valeur isolée (*)"
 
-    # Test de Grubbs double (deux plus grandes ou deux plus petites)
+    # Test de Grubbs double (deux plus grandes ou deux plus petites) — ISO 5725-2 §7.3.4.
+    # Il sert à détecter deux valeurs aberrantes du MÊME côté qui se masquent mutuellement : on ne
+    # l'évalue donc pour un côté que si le test simple n'y a pas déjà conclu à une valeur aberrante (**).
+    # (Sinon la valeur aberrante déjà détectée suffit à rendre la paire « significative » : faux positif.)
     s0_sq = sum((v - mean_val) ** 2 for v in values)
     sorted_vals = sorted(values)
 
-    # Deux plus grandes
+    # statistique = Somme des carrés des écarts après retrait de la paire / SCE totale (petit = aberrant)
     x_bar_top2 = sum(sorted_vals[:-2]) / (p - 2)
-    s_top2_sq = sum((v - x_bar_top2) ** 2 for v in sorted_vals[:-2])
-    g_double_top = s_top2_sq / s0_sq if s0_sq > 0 else 1.0
-
-    # Deux plus petites
+    g_double_top = (sum((v - x_bar_top2) ** 2 for v in sorted_vals[:-2]) / s0_sq) if s0_sq > 0 else 1.0
     x_bar_bot2 = sum(sorted_vals[2:]) / (p - 2)
-    s_bot2_sq = sum((v - x_bar_bot2) ** 2 for v in sorted_vals[2:])
-    g_double_bot = s_bot2_sq / s0_sq if s0_sq > 0 else 1.0
+    g_double_bot = (sum((v - x_bar_bot2) ** 2 for v in sorted_vals[2:]) / s0_sq) if s0_sq > 0 else 1.0
 
-    double_outlier = None
+    single_flagged_aberrant = (status == "Valeur aberrante (**)")
+    eval_top = not (single_flagged_aberrant and candidate == max_val)
+    eval_bot = not (single_flagged_aberrant and candidate == min_val)
+
+    double_outlier, pair_side, pair_values = None, None, []
     if dc5 is not None:
-        if g_double_top < dc1 or g_double_bot < dc1:
-            double_outlier = "Paire d'aberrantes (**)"
-        elif g_double_top < dc5 or g_double_bot < dc5:
-            double_outlier = "Paire d'isolées (*)"
+        cands = []                       # (statistique, côté, niveau)
+        if eval_top:
+            cands.append((g_double_top, "haute", sorted_vals[-2:]))
+        if eval_bot:
+            cands.append((g_double_bot, "basse", sorted_vals[:2]))
+        cands = [c for c in cands if c[0] < dc5]
+        if cands:
+            g_sel, pair_side, pair_values = min(cands, key=lambda c: c[0])
+            double_outlier = "Paire d'aberrantes (**)" if g_sel < dc1 else "Paire d'isolées (*)"
+            # les deux valeurs de la paire sont signalées (comme les valeurs isolées du test simple)
+            for v in pair_values:
+                if v not in outliers_list:
+                    outliers_list.append(v)
+            if outlier is None:
+                outlier = pair_values[-1] if pair_side == "haute" else pair_values[0]
+            if status == "Correct":
+                status = "Paire aberrante (**)" if g_sel < dc1 else "Paire isolée (*)"
 
     return {
         "outlier_value": outlier,
@@ -731,6 +749,10 @@ def grubbs_test(values):
             "crit_5": dc5,
             "crit_1": dc1,
             "status": double_outlier,
+            "side": pair_side,
+            "pair_values": pair_values,
+            "evaluated_top": eval_top,
+            "evaluated_bot": eval_bot,
         },
     }
 
