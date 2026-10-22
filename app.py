@@ -39,10 +39,10 @@ def create_app(config_class=Config):
         # Initialisation automatique des comptes de base (notamment sur Render)
         try:
             from models import User, Laboratory
+            # Support des variables Render : 'admin' ou 'ADMIN_PASSWORD'
+            admin_pwd = os.environ.get("admin") or os.environ.get("ADMIN_PASSWORD") or "admin1234"
             admin = User.query.filter_by(username="admin").first()
             if not admin:
-                import os
-                admin_pwd = os.environ.get("ADMIN_PASSWORD", "admin123")
                 admin = User(
                     username="admin",
                     email="admin@ptms.local",
@@ -53,7 +53,13 @@ def create_app(config_class=Config):
                 admin.set_password(admin_pwd)
                 db.session.add(admin)
                 db.session.commit()
-                print("Compte administrateur initialisé avec succès.")
+                print("Compte administrateur créé avec succès.")
+            else:
+                # Met à jour le mot de passe si configuré dans Render
+                if os.environ.get("admin") or os.environ.get("ADMIN_PASSWORD"):
+                    admin.set_password(admin_pwd)
+                    db.session.commit()
+                    print("Mot de passe administrateur synchronisé avec Render.")
             
             # Chef technique
             if not User.query.filter_by(username="chef.technique").first():
