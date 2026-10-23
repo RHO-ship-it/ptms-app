@@ -1,7 +1,13 @@
 import os
 import io
+import math
 from datetime import datetime
 from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
 
 from flask import Blueprint, render_template, request, send_file, current_app, flash, redirect, url_for, abort
 from flask_login import login_required, current_user
@@ -798,6 +804,311 @@ def _export_fte_workbook(campaign, template):
     return send_file(buf, as_attachment=True,
                       download_name=f"{template.upper()}_{campaign.reference}.xlsx",
                       mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+# ---------------------------------------------------------------------------
+# Fonctions de génération des courbes et graphiques pour les rapports
+# ---------------------------------------------------------------------------
+
+def _generate_henry_chart(henry_res, trial_name=""):
+    """Trace la Droite d'Henry (normits vs valeurs mesurées, régression et R²)."""
+    pts = henry_res.get("points") if henry_res else []
+    if not pts or len(pts) < 3:
+        return None
+
+    xs = [p["x"] for p in pts]
+    normits = [p["normit"] for p in pts]
+    slope = henry_res.get("slope")
+    intercept = henry_res.get("intercept")
+    r2 = henry_res.get("r_squared")
+    is_normal = henry_res.get("normal_conform", False)
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.5), dpi=160)
+    ax.scatter(xs, normits, color="#1F4E78", s=45, edgecolors="#123049", zorder=3, label="Données observées")
+
+    if slope is not None and intercept is not None:
+        min_x, max_x = min(xs), max(xs)
+        dx = (max_x - min_x) * 0.05 if max_x > min_x else 1.0
+        line_x = [min_x - dx, max_x + dx]
+        line_y = [slope * x + intercept for x in line_x]
+        diag_label = f"Droite d'ajustement (R² = {r2:.4f})" if r2 is not None else "Droite d'ajustement"
+        ax.plot(line_x, line_y, color="#E74C3C", linestyle="--", linewidth=1.8, zorder=2, label=diag_label)
+
+    ax.axhline(0, color="#7F8C8D", linestyle=":", linewidth=0.8, alpha=0.7)
+
+    title_norm = "Distribution normale (R² > 0.7)" if is_normal else "Déviation de la normalité (R² ≤ 0.7)"
+    ax.set_title(f"Droite d'Henry (Probabilité Normale) — {title_norm}\n{trial_name}", fontsize=10, fontweight="bold", pad=8)
+    ax.set_xlabel("Valeur mesurée (x_i)", fontsize=9)
+    ax.set_ylabel("Normit (Quantile normal standard)", fontsize=9)
+    ax.grid(True, linestyle=":", alpha=0.6, color="#BDC3C7")
+    ax.legend(loc="upper left", fontsize=8, framealpha=0.9)
+    fig.tight_layout()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _generate_kde_chart(values, x_pt=None, sigma_pt=None, trial_name="", unit=""):
+    """Trace l'histogramme, la courbe normale et les repères consensus x_pt ± 2σ, ± 3σ."""
+    if not values or len(values) < 2:
+        return None
+
+    vals = np.array(values, dtype=float)
+    n = len(vals)
+    min_v, max_v = float(np.min(vals)), float(np.max(vals))
+    span = max_v - min_v if max_v > min_v else (abs(min_v) * 0.1 or 1.0)
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.5), dpi=160)
+
+    bins = min(max(int(math.sqrt(n)), 4), 15)
+    ax.hist(vals, bins=bins, density=True, alpha=0.35, color="#3498DB", edgecolor="#1F4E78", label="Histogramme des résultats")
+
+    mu = float(x_pt) if x_pt is not None else float(np.mean(vals))
+    sig = float(sigma_pt) if (sigma_pt is not None and float(sigma_pt) > 0) else float(np.std(vals, ddof=1) if n > 1 else 1.0)
+
+    x_grid = np.linspace(min_v - 0.3 * span, max_v + 0.3 * span, 200)
+    if sig > 0:
+        norm_pdf = (1.0 / (sig * math.sqrt(2 * math.pi))) * np.exp(-0.5 * ((x_grid - mu) / sig) ** 2)
+        ax.plot(x_grid, norm_pdf, color="#8E44AD", linewidth=2.0, label=f"Loi normale (x_pt={mu:.2f}, σ={sig:.2f})")
+
+    ax.axvline(mu, color="#27AE60", linestyle="-", linewidth=1.8, label=f"Valeur assignée consensus ({mu:.2f})")
+    if sig > 0:
+        ax.axvline(mu - 2 * sig, color="#F39C12", linestyle="--", linewidth=1.1, alpha=0.8, label=f"Limites ±2σ ({mu - 2*sig:.2f} / {mu + 2*sig:.2f})")
+        ax.axvline(mu + 2 * sig, color="#F39C12", linestyle="--", linewidth=1.1, alpha=0.8)
+        ax.axvline(mu - 3 * sig, color="#E74C3C", linestyle=":", linewidth=1.1, alpha=0.8, label=f"Limites ±3σ ({mu - 3*sig:.2f} / {mu + 3*sig:.2f})")
+        ax.axvline(mu + 3 * sig, color="#E74C3C", linestyle=":", linewidth=1.1, alpha=0.8)
+
+    ax.plot(vals, [0.0] * n, "|", color="#C0392B", markersize=14, markeredgewidth=1.8, zorder=5, label="Valeurs participants")
+
+    u_label = f" ({unit})" if unit else ""
+    ax.set_title(f"Distribution des Résultats & Courbe de Densité — {trial_name}", fontsize=10, fontweight="bold", pad=8)
+    ax.set_xlabel(f"Valeur observée{u_label}", fontsize=9)
+    ax.set_ylabel("Densité de probabilité", fontsize=9)
+    ax.grid(True, linestyle=":", alpha=0.6, color="#BDC3C7")
+    ax.legend(loc="upper right", fontsize=7.5, framealpha=0.9)
+    fig.tight_layout()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _generate_boxplot_chart(values, box_res=None, trial_name="", unit=""):
+    """Trace la boîte à moustaches (Tukey) avec repérage des valeurs aberrantes."""
+    if not values:
+        return None
+
+    fig, ax = plt.subplots(figsize=(6.5, 2.6), dpi=160)
+
+    ax.boxplot(
+        values,
+        orientation="horizontal",
+        patch_artist=True,
+        showmeans=True,
+        meanline=True,
+        boxprops=dict(facecolor="#D9E1F2", color="#1F4E78", linewidth=1.5),
+        whiskerprops=dict(color="#1F4E78", linewidth=1.5),
+        capprops=dict(color="#1F4E78", linewidth=1.5),
+        medianprops=dict(color="#C00000", linewidth=2.0),
+        meanprops=dict(color="#27AE60", linewidth=1.8, linestyle="--"),
+        flierprops=dict(marker="D", markerfacecolor="#E74C3C", markeredgecolor="#922B21", markersize=6),
+    )
+
+    if box_res:
+        q1 = box_res.get("q1")
+        med = box_res.get("median")
+        q3 = box_res.get("q3")
+        iqr = box_res.get("iqr")
+        outliers = box_res.get("outliers") or []
+        subtitle = f"Q1={q1} | Médiane={med} | Q3={q3} | IQR={iqr}"
+        if outliers:
+            subtitle += f" | {len(outliers)} valeur(s) aberrante(s)"
+    else:
+        subtitle = ""
+
+    ax.set_yticks([])
+    u_label = f" ({unit})" if unit else ""
+    ax.set_xlabel(f"Valeur mesurée{u_label}", fontsize=9)
+    ax.set_title(f"Boîte à Moustaches (Box-Plot de Tukey) — {trial_name}\n{subtitle}", fontsize=9.5, fontweight="bold", pad=8)
+    ax.grid(True, linestyle=":", alpha=0.6, axis="x", color="#BDC3C7")
+    fig.tight_layout()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _generate_zscore_chart(submissions, trial_name="", lab_label_fn=None):
+    """Diagramme en bâtons des scores z par laboratoire avec zones ±2 et ±3."""
+    valid_subs = [s for s in submissions if s.z_score is not None and s.form and s.form.laboratory]
+    if not valid_subs:
+        return None
+
+    valid_subs.sort(key=lambda s: s.form.laboratory.code)
+
+    labs = []
+    z_scores = []
+    colors = []
+
+    for s in valid_subs:
+        lab_code = lab_label_fn(s.form.laboratory) if lab_label_fn else s.form.laboratory.code
+        labs.append(lab_code)
+        z = s.z_score
+        z_scores.append(z)
+        if abs(z) <= 2.0:
+            colors.append("#27AE60")
+        elif abs(z) < 3.0:
+            colors.append("#F39C12")
+        else:
+            colors.append("#E74C3C")
+
+    fig_w = max(6.5, min(14.0, len(labs) * 0.45 + 2.0))
+    fig, ax = plt.subplots(figsize=(fig_w, 3.6), dpi=160)
+
+    x_indices = range(len(labs))
+    ax.bar(x_indices, z_scores, color=colors, edgecolor="#2C3E50", width=0.6, zorder=3)
+
+    ax.axhline(0, color="black", linewidth=0.9, zorder=2)
+    ax.axhline(2.0, color="#F39C12", linestyle="--", linewidth=1.2, zorder=2, label="Vigilance (|z| = 2)")
+    ax.axhline(-2.0, color="#F39C12", linestyle="--", linewidth=1.2, zorder=2)
+    ax.axhline(3.0, color="#E74C3C", linestyle=":", linewidth=1.4, zorder=2, label="Action (|z| = 3)")
+    ax.axhline(-3.0, color="#E74C3C", linestyle=":", linewidth=1.4, zorder=2)
+
+    ax.axhspan(-2.0, 2.0, facecolor="#E8F8F5", alpha=0.5, zorder=1)
+
+    min_z = min(z_scores) if z_scores else -3.5
+    max_z = max(z_scores) if z_scores else 3.5
+    y_min = min(-3.5, min_z - 0.5)
+    y_max = max(3.5, max_z + 0.5)
+    ax.set_ylim(y_min, y_max)
+
+    ax.set_xticks(x_indices)
+    ax.set_xticklabels(labs, rotation=45 if len(labs) > 8 else 0, ha="right" if len(labs) > 8 else "center", fontsize=8)
+    ax.set_ylabel("Score Z", fontsize=9)
+    ax.set_title(f"Évaluation Individuelle des Scores Z (ISO 13528 §9.2) — {trial_name}", fontsize=10, fontweight="bold", pad=8)
+    ax.grid(True, linestyle=":", alpha=0.5, color="#BDC3C7", axis="y")
+    ax.legend(loc="upper right", fontsize=8, framealpha=0.9)
+    fig.tight_layout()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _generate_mandel_chart(mandel_res, trial_name="", lab_label_fn=None, forms=None):
+    """Diagramme en bâtons des statistiques h de Mandel avec seuils 5% et 1%."""
+    results = mandel_res.get("results") if mandel_res else []
+    if not results:
+        return None
+
+    # Si forms fourni, mapper code labo vers lab_label_fn si disponible
+    code_map = {}
+    if forms and lab_label_fn:
+        for f in forms:
+            if f.laboratory:
+                code_map[f.laboratory.code] = lab_label_fn(f.laboratory)
+
+    sorted_res = sorted(results, key=lambda r: r.get("lab_code", ""))
+    labs = [code_map.get(r.get("lab_code", ""), r.get("lab_code", "")) for r in sorted_res]
+    h_vals = [r.get("h", 0.0) for r in sorted_res]
+
+    h_crit_5 = mandel_res.get("h_critical_5")
+    h_crit_1 = mandel_res.get("h_critical_1")
+
+    colors = []
+    for r in sorted_res:
+        if r.get("is_outlier"):
+            colors.append("#E74C3C")
+        elif r.get("is_straggler"):
+            colors.append("#F39C12")
+        else:
+            colors.append("#2980B9")
+
+    fig_w = max(6.5, min(14.0, len(labs) * 0.45 + 2.0))
+    fig, ax = plt.subplots(figsize=(fig_w, 3.6), dpi=160)
+
+    x_indices = range(len(labs))
+    ax.bar(x_indices, h_vals, color=colors, edgecolor="#2C3E50", width=0.6, zorder=3)
+    ax.axhline(0, color="black", linewidth=0.9, zorder=2)
+
+    if h_crit_5 is not None:
+        ax.axhline(h_crit_5, color="#F39C12", linestyle="--", linewidth=1.2, zorder=2, label=f"Seuil 5% vigilance (h = {h_crit_5})")
+        ax.axhline(-h_crit_5, color="#F39C12", linestyle="--", linewidth=1.2, zorder=2)
+    if h_crit_1 is not None:
+        ax.axhline(h_crit_1, color="#E74C3C", linestyle=":", linewidth=1.4, zorder=2, label=f"Seuil 1% action (h = {h_crit_1})")
+        ax.axhline(-h_crit_1, color="#E74C3C", linestyle=":", linewidth=1.4, zorder=2)
+
+    crit_max = max(h_crit_1 or 2.0, (h_crit_5 or 1.5))
+    min_h = min(h_vals) if h_vals else -crit_max
+    max_h = max(h_vals) if h_vals else crit_max
+    y_min = min(-crit_max * 1.15, min_h - 0.2)
+    y_max = max(crit_max * 1.15, max_h + 0.2)
+    ax.set_ylim(y_min, y_max)
+
+    ax.set_xticks(x_indices)
+    ax.set_xticklabels(labs, rotation=45 if len(labs) > 8 else 0, ha="right" if len(labs) > 8 else "center", fontsize=8)
+    ax.set_ylabel("Statistique h", fontsize=9)
+    ax.set_title(f"Statistique h de Mandel (Cohérence Inter-Laboratoires ISO 5725-2) — {trial_name}", fontsize=10, fontweight="bold", pad=8)
+    ax.grid(True, linestyle=":", alpha=0.5, color="#BDC3C7", axis="y")
+    ax.legend(loc="upper right", fontsize=8, framealpha=0.9)
+    fig.tight_layout()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+def _generate_qualitative_chart(results, consensus=None, agreement_rate=0.0, trial_name=""):
+    """Diagramme de répartition des résultats qualitatifs avec mise en valeur du consensus."""
+    cleaned = [r for r in results if r]
+    if not cleaned:
+        return None
+
+    from collections import Counter
+    counts = Counter(cleaned)
+    labels = list(counts.keys())
+    values = [counts[l] for l in labels]
+
+    palette = ["#27AE60", "#E74C3C", "#2980B9", "#F39C12", "#8E44AD", "#16A085", "#D35400"]
+    bar_colors = []
+    for i, l in enumerate(labels):
+        if consensus and l.strip().lower() == consensus.strip().lower():
+            bar_colors.append("#27AE60")
+        else:
+            bar_colors.append(palette[(i + 1) % len(palette)])
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.2), dpi=160)
+    bars = ax.bar(labels, values, color=bar_colors, edgecolor="#2C3E50", width=0.5, zorder=3)
+
+    total = sum(values)
+    for bar in bars:
+        h = bar.get_height()
+        pct = (h / total) * 100
+        ax.text(bar.get_x() + bar.get_width() / 2.0, h + 0.1, f"{int(h)} ({pct:.1f}%)", ha="center", va="bottom", fontsize=8.5, fontweight="bold")
+
+    ax.set_ylabel("Nombre de participants", fontsize=9)
+    ax.set_ylim(0, max(values) * 1.25 + 0.5)
+    title_cons = f"Consensus : {consensus} ({agreement_rate}%)" if consensus else "Distribution des Réponses"
+    ax.set_title(f"Répartition des Résultats Qualitatifs — {title_cons}\n{trial_name}", fontsize=10, fontweight="bold", pad=8)
+    ax.grid(True, linestyle=":", alpha=0.5, color="#BDC3C7", axis="y")
+    fig.tight_layout()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
 
 
 # ---------------------------------------------------------------------------
