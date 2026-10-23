@@ -4,7 +4,7 @@ from datetime import datetime
 from flask_login import login_required, current_user
 
 from extensions import db
-from models import Campaign, Trial, Submission, ParticipantForm
+from models import Campaign, Trial, Submission, ParticipantForm, REPORT_ESTIMATORS
 from utils import (
     algorithm_a,
     median_made_niqr,
@@ -12,6 +12,7 @@ from utils import (
     classical_stats,
     algorithm_s,
     grubbs_test,
+    grubbs_detailed,
     droite_henry,
     boxplot_stats,
     kolmogorov_smirnov_test,
@@ -22,7 +23,7 @@ from utils import (
     qualitative_consensus,
     log_action,
     z_score_interpretation,
-    compute_cohen_kappa,
+    compute_fleiss_kappa,
     qualitative_weighted_agreement,
     solidite_matrix_stats,
     mandel_h_statistic,
@@ -56,6 +57,7 @@ def _process_quantitative(trial, submissions):
     alg_s = algorithm_s(w_values, nu=1) if w_values else None
 
     grubbs = grubbs_test(values) if len(values) >= 3 else None
+    grubbs_detail = grubbs_detailed(values) if len(values) >= 3 else None
     henry = droite_henry(values) if len(values) >= 3 else None
     box = boxplot_stats(values) if values else None
     ks = kolmogorov_smirnov_test(values) if len(values) >= 3 else None
@@ -113,6 +115,7 @@ def _process_quantitative(trial, submissions):
         "class_st": class_st,
         "alg_s": alg_s,
         "grubbs": grubbs,
+        "grubbs_detail": grubbs_detail,
         "henry": henry,
         "boxplot": box,
         "ks": ks,
@@ -134,7 +137,12 @@ def _process_qualitative(trial, submissions):
     """Calcule les indicateurs pour un essai qualitatif."""
     results = [s.qualitative_result for s in submissions if s.qualitative_result]
     consensus, agreement_rate, distribution = qualitative_consensus(results)
-    kappa = compute_cohen_kappa(results)
+    # Kappa de Fleiss : accord corrigé du hasard sur les essais du même type de la campagne
+    sibling_results = [
+        [f.submission.qualitative_result for f in t.forms if f.submission and f.submission.qualitative_result]
+        for t in trial.campaign.trials if t.trial_type == trial.trial_type
+    ]
+    kappa = compute_fleiss_kappa(sibling_results)
     weighted = qualitative_weighted_agreement(results)
 
     participant_results = []
@@ -242,6 +250,7 @@ def atelier():
         stats=stats,
         tools_summary=tools_summary,
         solidite_params=SOLIDITE_PARAMS,
+        report_estimator_options=REPORT_ESTIMATORS,
     )
 
 
@@ -471,3 +480,24 @@ def toggle_exclusion(submission_id):
     recompute_scores(trial)
     db.session.commit()
     return back
+
+
+@traitement_bp.route("/report-estimators/<int:trial_id>", methods=["POST"])
+@login_required
+@roles_required("admin", "chef_technique")
+def set_report_estimators(trial_id):
+    """L'administrateur choisit (liste déroulante) les estimateurs affichés dans les rapports de l'essai.
+    N'affecte ni x_pt, ni sigma_pt, ni les scores : c'est un choix de présentation."""
+    trial = Trial.query.get_or_404(trial_id)
+    if trial.campaign.report_published:
+        flash("Le rapport de cette campagne est publié : le choix des estimateurs ne peut plus être modifié.", "warning")
+        return redirect(url_for("traitement.atelier", trial_id=trial.id))
+
+    allowed = [k for k, _ in REPORT_ESTIMATORS]
+    chosen = [k for k in request.form.getlist("report_estimators") if k in allowed]
+    trial.report_estimators = ",".join(chosen) if chosen else None
+    log_action("set_report_estimators", "Trial", trial.id,
+               f"Estimateurs affichés dans le rapport de {trial.name} : {', '.join(chosen) or 'aucun'}")
+    db.session.commit()
+    flash("Estimateurs du rapport enregistrés.", "success")
+    return redirect(url_for("traitement.atelier", trial_id=trial.id))

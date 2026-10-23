@@ -22,7 +22,9 @@ Traitement des résultats exclus
   ces valeurs (ISO 13528 §6.6 : les valeurs aberrantes sont écartées de l'estimation robuste,
   pas de l'évaluation).
 """
-from utils import algorithm_a, compute_z_score, compute_en
+from utils import (algorithm_a, compute_z_score, compute_en, median_made_niqr,
+                   m_estimator_logistic, classical_stats)
+from models import REPORT_ESTIMATORS
 
 K_EXPANSION = 2.0
 
@@ -113,3 +115,28 @@ def recompute_scores(trial):
 
 def recompute_campaign_scores(campaign):
     return sum(recompute_scores(t) for t in campaign.trials)
+
+
+def estimator_rows(submissions, keys):
+    """Lignes du tableau « Estimateurs » des rapports, pour les estimateurs choisis par l'administrateur.
+    Calculés sur les résultats non exclus ; (libellé, valeur centrale, écart-type, u(x), remarque)."""
+    values = estimation_values(submissions)
+    if not values:
+        return []
+    labels = dict(REPORT_ESTIMATORS)
+    rows = []
+    for key in keys:
+        if key == "algorithm_a":
+            r = algorithm_a(values)
+            rows.append((labels[key], r["x_pt"], r["sigma_pt"], r["u_xpt"], f"{r['iterations']} itérations"))
+        elif key == "median_made":
+            r = median_made_niqr(values)
+            rows.append((labels[key], r["median"], r["sigma_pt"], r["u_xpt"],
+                         "σ = MADe" if r["made"] else "σ = nIQR"))
+        elif key == "m_estimator":
+            r = m_estimator_logistic(values)
+            rows.append((labels[key], r["mu_hat"], r["sigma_robuste"], r["u_xpt"], f"{r['iterations']} itérations"))
+        elif key == "classical":
+            r = classical_stats(values)
+            rows.append((labels[key], r["mean"], r["sd"], r["u_xpt"], f"n = {len(values)}"))
+    return rows

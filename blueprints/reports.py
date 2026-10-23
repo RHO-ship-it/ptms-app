@@ -10,7 +10,7 @@ from models import Campaign, Trial, ParticipantForm
 from utils import z_score_interpretation, log_action, robust_stats, qualitative_consensus
 from blueprints.auth import roles_required
 from extensions import db
-from scoring import assigned_values, recompute_campaign_scores
+from scoring import assigned_values, recompute_campaign_scores, estimator_rows
 
 
 def _refresh_scores(campaign):
@@ -880,11 +880,11 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None):
     # ----- 6. Statistics & Results per trial -----
     doc.add_heading("6) Statistics and Results", level=1)
     doc.add_paragraph(
-        "Pour chaque essai, la valeur consensuelle (x*) et l'écart-type (s*) sont estimés "
-        "à partir de la médiane robuste et du MAD normalisé des résultats soumis "
-        "(ou à partir de la valeur assignée et de l'écart-type définis a priori, lorsqu'ils "
-        "sont disponibles). Le score utilisé pour l'évaluation de performance est le z-score : "
-        "z = (xi - x*) / s*, avec |z| ≤ 2 satisfaisant, 2 < |z| < 3 douteux, |z| ≥ 3 non satisfaisant."
+        "Pour chaque essai, la valeur assignée (x_pt) et l'écart-type d'aptitude (σ_pt) sont ceux de la "
+        "méthode retenue (valeurs fixées a priori, ou estimateur robuste calculé sur les résultats non exclus). "
+        "Les estimateurs présentés sont choisis par l'administrateur. Le score d'évaluation est le "
+        "z-score : z = (xi - x_pt) / σ_pt (z' = (xi - x_pt) / √(σ_pt² + u²(x_pt)) lorsque u(x_pt) > 0,3·σ_pt), "
+        "avec |z| ≤ 2 satisfaisant, 2 < |z| < 3 douteux, |z| ≥ 3 non satisfaisant."
     )
 
     total_satisfactory = total_questionable = total_unsatisfactory = 0
@@ -908,6 +908,18 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None):
                     f"u(x_pt) : {_fmt_report_value(av['u_xpt'])}"
                     + (f"   |   Résultats exclus du calcul de x_pt/σ_pt : {n_excl}" if n_excl else "")
                 )
+                est_keys = trial.selected_report_estimators()
+                if est_keys:
+                    doc.add_paragraph("Estimateurs retenus pour ce rapport (résultats non exclus du calcul) :")
+                    est_table = doc.add_table(rows=1, cols=5)
+                    est_table.style = "Light Grid Accent 1"
+                    for cell, txt in zip(est_table.rows[0].cells,
+                                         ("Estimateur", "Valeur centrale", "Écart-type", "u(x)", "Remarque")):
+                        cell.text = txt
+                    for label, centre, sd, u_x, note in estimator_rows(submissions, est_keys):
+                        row = est_table.add_row().cells
+                        row[0].text, row[1].text, row[2].text, row[3].text, row[4].text = (
+                            label, _fmt_report_value(centre), _fmt_report_value(sd), _fmt_report_value(u_x), note)
             else:
                 doc.add_paragraph("Aucune valeur soumise : aucun calcul de statistique / z-score n'est disponible pour cet essai.")
 

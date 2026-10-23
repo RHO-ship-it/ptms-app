@@ -21,6 +21,15 @@ SIGMA_PT_METHOD_LABELS = {
 }
 
 
+# Estimateurs que l'administrateur peut faire figurer dans les rapports (liste déroulante de l'Atelier)
+REPORT_ESTIMATORS = [
+    ("algorithm_a", "Algorithme A (ISO 13528)"),
+    ("median_made", "Médiane / MADe / nIQR"),
+    ("m_estimator", "M-estimateur logistique"),
+    ("classical", "Moyenne / écart-type classiques"),
+]
+
+
 class User(UserMixin, db.Model):
     __tablename__ = "users"
 
@@ -179,6 +188,13 @@ class Trial(db.Model):
 
     # --- Incertitude de la valeur assignée, utilisée pour le calcul du En (ISO 13528 §9.3 / ISO 17043) ---
     reference_uncertainty = db.Column(db.Float, nullable=True)  # U(X_ref), incertitude élargie de la valeur assignée
+
+    # Estimateurs affichés dans les rapports, choisis par l'administrateur (clés de REPORT_ESTIMATORS, séparées par des virgules)
+    report_estimators = db.Column(db.String(120), nullable=True)
+
+    def selected_report_estimators(self):
+        allowed = [k for k, _ in REPORT_ESTIMATORS]
+        return [k for k in (self.report_estimators or "").split(",") if k in allowed]
 
     def type_label(self):
         return TRIAL_TYPE_LABELS.get(self.trial_type, self.trial_type)

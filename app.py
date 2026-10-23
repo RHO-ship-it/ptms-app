@@ -29,6 +29,7 @@ def create_app(config_class=Config):
                                    ("campaigns", "final_report_path", "VARCHAR(255)"),
                                    ("trials", "sheet_key", "VARCHAR(40)"),
                                    ("trials", "scale", "TEXT"),
+                                   ("trials", "report_estimators", "VARCHAR(120)"),
                                    ("submissions", "extra_data", "TEXT"),
                                    ("submissions", "excluded_from_stats", "BOOLEAN NOT NULL DEFAULT 0"),
                                    ("submissions", "exclusion_reason", "VARCHAR(300)"),

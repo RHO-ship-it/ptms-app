@@ -119,10 +119,10 @@
     <div class="col-md-3">
       <div class="card border-0 shadow-sm h-100 text-center">
         <div class="card-body py-3">
-          <div class="display-6 fw-bold {% if stats.kappa and stats.kappa.kappa >= 0.6 %}text-success{% elif stats.kappa and stats.kappa.kappa >= 0.4 %}text-warning{% else %}text-danger{% endif %}">
+          <div class="display-6 fw-bold {% if stats.kappa and stats.kappa.kappa is not none and stats.kappa.kappa >= 0.6 %}text-success{% elif stats.kappa and stats.kappa.kappa is not none and stats.kappa.kappa >= 0.4 %}text-warning{% elif stats.kappa and stats.kappa.kappa is not none %}text-danger{% else %}text-secondary{% endif %}">
             {{ stats.kappa.kappa if stats.kappa and stats.kappa.kappa is not none else '—' }}
           </div>
-          <div class="small text-muted">κ de Cohen</div>
+          <div class="small text-muted">κ de Fleiss</div>
           {% if stats.kappa %}<span class="badge bg-{{ stats.kappa.badge }} mt-1 small">{{ stats.kappa.interpretation }}</span>{% endif %}
         </div>
       </div>
@@ -357,6 +357,42 @@
           </form>
         </div>
       </div>
+
+      <!-- Estimateurs affichés dans le rapport (choix de l'administrateur) -->
+      {% if current_user.role in ('admin', 'chef_technique') and not selected_trial.campaign.report_published %}
+      <div class="card border-0 shadow-sm mt-3">
+        <div class="card-header bg-primary text-white py-2">
+          <i class="bi bi-file-earmark-text me-2"></i>Estimateurs affichés dans le rapport
+        </div>
+        <div class="card-body">
+          <form method="post" action="{{ url_for('traitement.set_report_estimators', trial_id=selected_trial.id) }}" class="row g-3 align-items-end">
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">Estimateurs à présenter dans le rapport de cet essai</label>
+              <div class="dropdown">
+                <button class="btn btn-outline-secondary dropdown-toggle w-100 text-start" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                  {% set sel = selected_trial.selected_report_estimators() %}
+                  {{ (sel | length) ~ ' estimateur(s) sélectionné(s)' if sel else 'Aucun estimateur supplémentaire' }}
+                </button>
+                <ul class="dropdown-menu w-100 p-2">
+                  {% for key, label in report_estimator_options %}
+                  <li>
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" name="report_estimators" value="{{ key }}" id="rep_{{ key }}" {{ 'checked' if key in sel else '' }}>
+                      <label class="form-check-label" for="rep_{{ key }}">{{ label }}</label>
+                    </div>
+                  </li>
+                  {% endfor %}
+                </ul>
+              </div>
+              <div class="form-text">Choix de présentation : n'affecte ni x<sub>pt</sub>, ni σ<sub>pt</sub>, ni les scores. Calculé sur les résultats non exclus.</div>
+            </div>
+            <div class="col-md-3">
+              <button type="submit" class="btn btn-primary w-100"><i class="bi bi-floppy me-1"></i>Enregistrer</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      {% endif %}
     </div>
 
     <!-- ══════════════════════════════════════════════════════════════════ -->
@@ -517,6 +553,76 @@
             </div>
           </div>
         </div>
+
+        {% if stats.grubbs_detail and stats.grubbs_detail.iterations %}
+        <div class="col-12">
+          <div class="card border-0 shadow-sm">
+            <div class="card-header bg-danger text-white py-2">
+              <i class="bi bi-table me-2"></i><strong>Test de Grubbs détaillé — ISO 5725-2:2019</strong>
+              <span class="float-end small opacity-75">{{ stats.grubbs_detail.n_initial }} résultats → {{ stats.grubbs_detail.n_final }} conservés</span>
+            </div>
+            <div class="card-body">
+              {% set txt_top = {'ok': 'La plus grande valeur de la distribution est correcte', 'straggler': 'La plus grande valeur est une valeur isolée (*)', 'outlier': 'La plus grande valeur est une valeur aberrante (**)'} %}
+              {% set txt_bot = {'ok': 'La plus petite valeur de la distribution est correcte', 'straggler': 'La plus petite valeur est une valeur isolée (*)', 'outlier': 'La plus petite valeur est une valeur aberrante (**)'} %}
+              {% set txt_dtop = {'ok': 'Les deux plus grandes valeurs sont correctes', 'straggler': 'Les deux plus grandes valeurs sont isolées (*)', 'outlier': 'Les deux plus grandes valeurs sont aberrantes (**)', 'not_evaluated': 'Non évalué : valeur aberrante simple déjà détectée de ce côté'} %}
+              {% set txt_dbot = {'ok': 'Les deux plus petites valeurs sont correctes', 'straggler': 'Les deux plus petites valeurs sont isolées (*)', 'outlier': 'Les deux plus petites valeurs sont aberrantes (**)', 'not_evaluated': 'Non évalué : valeur aberrante simple déjà détectée de ce côté'} %}
+              {% set bd = {'ok': 'success', 'straggler': 'warning', 'outlier': 'danger', 'not_evaluated': 'secondary'} %}
+              {% for it in stats.grubbs_detail.iterations %}
+              <div class="border rounded p-3 mb-3">
+                <h6 class="fw-bold mb-3">Itération n° {{ it.iteration }}</h6>
+                <div class="row g-4">
+                  <div class="col-lg-6">
+                    <div class="fw-semibold text-primary mb-2">Grubbs simple</div>
+                    <table class="table table-sm table-bordered mb-2">
+                      <tr><th class="bg-light w-50">Moyenne</th><td>{{ '%.3f'|format(it.mean) }}</td></tr>
+                      <tr><th class="bg-light">Écart type</th><td>{{ '%.3f'|format(it.sd) }}</td></tr>
+                      <tr><th class="bg-light">p</th><td>{{ it.p }}</td></tr>
+                      <tr><th class="bg-light">Gp = (x<sub>max</sub> − moyenne) / s</th><td>{{ '%.3f'|format(it.G_p) }} <span class="text-muted small">(x<sub>max</sub> = {{ it.x_max }})</span></td></tr>
+                      <tr><th class="bg-light">G1 = (moyenne − x<sub>min</sub>) / s</th><td>{{ '%.3f'|format(it.G_1) }} <span class="text-muted small">(x<sub>min</sub> = {{ it.x_min }})</span></td></tr>
+                      <tr><th class="bg-light">G critique (1 %)</th><td>{{ '%.3f'|format(it.crit_1) }}</td></tr>
+                      <tr><th class="bg-light">G critique (5 %)</th><td>{{ '%.3f'|format(it.crit_5) }}</td></tr>
+                    </table>
+                    <div class="small fw-semibold">Décision</div>
+                    <div class="alert alert-{{ bd[it.status_top] }} py-1 px-2 mb-1 small"><strong>Gp</strong> — {{ txt_top[it.status_top] }}</div>
+                    <div class="alert alert-{{ bd[it.status_bot] }} py-1 px-2 mb-0 small"><strong>G1</strong> — {{ txt_bot[it.status_bot] }}</div>
+                  </div>
+                  <div class="col-lg-6">
+                    <div class="fw-semibold text-primary mb-2">Grubbs double</div>
+                    {% if it.double %}
+                    <table class="table table-sm table-bordered mb-2">
+                      <tr><th class="bg-light w-50">S0² (somme des carrés totale)</th><td>{{ '%.3f'|format(it.double.s0_sq) }}</td></tr>
+                      <tr><th class="bg-light">S²(p−1,p) (sans les 2 plus grandes)</th><td>{{ '%.3f'|format(it.double.s_top_sq) }}</td></tr>
+                      <tr><th class="bg-light">S²(1,2) (sans les 2 plus petites)</th><td>{{ '%.3f'|format(it.double.s_bot_sq) }}</td></tr>
+                      <tr><th class="bg-light">p</th><td>{{ it.p }}</td></tr>
+                      <tr><th class="bg-light">Gp = S²(p−1,p) / S0²</th><td>{{ '%.3f'|format(it.double.G_top) }}</td></tr>
+                      <tr><th class="bg-light">G1 = S²(1,2) / S0²</th><td>{{ '%.3f'|format(it.double.G_bot) }}</td></tr>
+                      <tr><th class="bg-light">G critique (1 %)</th><td>{{ '%.3f'|format(it.double.crit_1) }}</td></tr>
+                      <tr><th class="bg-light">G critique (5 %)</th><td>{{ '%.3f'|format(it.double.crit_5) }}</td></tr>
+                    </table>
+                    <div class="small fw-semibold">Décision <span class="text-muted fw-normal">(G petit = paire aberrante)</span></div>
+                    <div class="alert alert-{{ bd[it.double.status_top] }} py-1 px-2 mb-1 small"><strong>Gp</strong> — {{ txt_dtop[it.double.status_top] }}</div>
+                    <div class="alert alert-{{ bd[it.double.status_bot] }} py-1 px-2 mb-0 small"><strong>G1</strong> — {{ txt_dbot[it.double.status_bot] }}</div>
+                    {% else %}
+                    <p class="text-muted small">Grubbs double non défini pour p &lt; 4.</p>
+                    {% endif %}
+                  </div>
+                </div>
+                {% if it.removed %}
+                <div class="alert alert-danger py-2 mt-3 mb-0 small">
+                  <i class="bi bi-x-octagon me-1"></i>Valeur(s) écartée(s) à cette itération : <strong>{{ it.removed | join(', ') }}</strong> — le test est répété sur les valeurs restantes.
+                </div>
+                {% endif %}
+              </div>
+              {% endfor %}
+              {% if stats.grubbs_detail.removed %}
+              <div class="alert alert-warning mb-0">Valeurs aberrantes écartées au total : <strong>{{ stats.grubbs_detail.removed | join(', ') }}</strong>. L'exclusion du traitement reste une décision de l'administrateur (colonne « Traitement »).</div>
+              {% else %}
+              <div class="alert alert-success mb-0">Aucune valeur aberrante (**) : le test s'arrête à l'itération {{ stats.grubbs_detail.iterations | length }}.</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% endif %}
 
         <!-- Statistique h de Mandel -->
         {% if stats.mandel and stats.mandel.results %}

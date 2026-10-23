@@ -5,6 +5,7 @@ from collections import Counter
 from flask_login import current_user
 from extensions import db
 from models import AuditLog, Notification, User, ParticipantForm, Trial
+from homogeneity_calc import t_two_sided_p, _bisect_isf
 
 
 def log_action(action, entity_type=None, entity_id=None, details=None):
@@ -218,11 +219,12 @@ GRUBBS_FULL_TABLE = {
 }
 
 # Table Kolmogorov-Smirnov (alpha=0.05) pour n <= 50
-KS_CRITICAL_05 = {
-    1: 0.975, 2: 0.842, 3: 0.708, 4: 0.624, 5: 0.565, 6: 0.521, 7: 0.486, 8: 0.457,
-    9: 0.432, 10: 0.410, 11: 0.391, 12: 0.375, 13: 0.361, 14: 0.349, 15: 0.338,
-    16: 0.328, 17: 0.318, 18: 0.309, 19: 0.301, 20: 0.294, 25: 0.270, 30: 0.240,
-    35: 0.230, 40: 0.210, 45: 0.200, 50: 0.190,
+# Valeurs critiques de Lilliefors (Kolmogorov-Smirnov avec moyenne et écart-type ESTIMÉS), seuil 5 %.
+# Au-delà de n = 30 : 0,886 / sqrt(n). Entre deux valeurs tabulées : interpolation linéaire.
+LILLIEFORS_CRITICAL_05 = {
+    4: 0.381, 5: 0.337, 6: 0.319, 7: 0.300, 8: 0.285, 9: 0.271, 10: 0.258, 11: 0.249,
+    12: 0.242, 13: 0.234, 14: 0.227, 15: 0.220, 16: 0.213, 17: 0.206, 18: 0.200, 19: 0.195,
+    20: 0.190, 25: 0.173, 30: 0.161,
 }
 
 # Facteurs Algorithme S (ISO 13528 §C.3.2 / Procédure TTS §5.2)
@@ -293,6 +295,11 @@ def normit_quantile(p):
 def normal_cdf(x):
     """Fonction de répartition de la loi normale standard Phi(x)."""
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def student_t_two_sided_quantile(alpha, df):
+    """Valeur t telle que P(|T| > t) = alpha pour une loi de Student à df degrés de liberté."""
+    return _bisect_isf(lambda t: t_two_sided_p(t, df), alpha, hi=2.0)
 
 
 # ===========================================================================
@@ -548,10 +555,12 @@ def algorithm_s(w_values, nu=1, max_iter=100, tol=1e-6):
 
 def horwitz_thompson_sd(concentration_mass_fraction, target_value=None):
     """
-    Modèle empirique de Horwitz modifié par Thompson (Procédure TTS §5.1.3 et Tableau 2) :
+    Modèle empirique de Horwitz modifié par Thompson (ISO 13528 ; Thompson, Analyst 2000) :
     - C < 1.2e-7           => sigma_R = 0.22 * C
-    - 1.2e-7 <= C <= 0.138 => sigma_R = 0.22 * C^0.8495
-    - C > 0.138            => sigma_R = 0.02 * sqrt(C)
+    - 1.2e-7 <= C <= 0.138 => sigma_R = 0.02 * C^0.8495
+    - C > 0.138            => sigma_R = 0.01 * C^0.5
+    Retourne sigma_R ; si target_value est fourni, il remplace C comme valeur de référence de l'écart relatif
+    (sigma = RSD * target_value). La fonction est continue aux deux bornes.
     """
     if concentration_mass_fraction is None or concentration_mass_fraction <= 0:
         return None
@@ -559,9 +568,9 @@ def horwitz_thompson_sd(concentration_mass_fraction, target_value=None):
     if C < 1.2e-7:
         rsd = 0.22
     elif C <= 0.138:
-        rsd = 0.22 * (C ** (0.8495 - 1.0))
+        rsd = 0.02 * (C ** (0.8495 - 1.0))
     else:
-        rsd = 0.02 * (C ** (-0.5))
+        rsd = 0.01 * (C ** (-0.5))
 
     sigma_pt = (target_value * rsd) if target_value else (C * rsd)
     return round(sigma_pt, 6)
@@ -757,6 +766,98 @@ def grubbs_test(values):
     }
 
 
+def _sum_sq(vals):
+    """Somme des carrés des écarts à la moyenne."""
+    if not vals:
+        return 0.0
+    mu = sum(vals) / len(vals)
+    return sum((v - mu) ** 2 for v in vals)
+
+
+def _single_status(g, c5, c1):
+    return "outlier" if g > c1 else ("straggler" if g > c5 else "ok")
+
+
+def _double_status(g, dc5, dc1):
+    """Pour le Grubbs double, une petite valeur de G indique une paire aberrante."""
+    return "outlier" if g < dc1 else ("straggler" if g < dc5 else "ok")
+
+
+def grubbs_detailed(values, max_iter=10):
+    """
+    Test de Grubbs détaillé, itération par itération (ISO 5725-2:2019 §7.3), comme la feuille de calcul de référence.
+
+    Pour chaque itération : moyenne, écart-type, p, Gp = (x_max - moyenne)/s, G1 = (moyenne - x_min)/s,
+    valeurs critiques 1 % / 5 % ; puis Grubbs double : S0² = somme des carrés des écarts, S²(p-1,p) et S²(1,2) =
+    sommes des carrés après retrait des deux plus grandes / des deux plus petites valeurs,
+    Gp = S²(p-1,p)/S0², G1 = S²(1,2)/S0², valeurs critiques 1 % / 5 %.
+
+    Décisions : 'ok' (correcte), 'straggler' (isolée *, conservée), 'outlier' (aberrante **, écartée).
+    Une valeur aberrante simple est écartée (la plus extrême d'abord) puis le test est répété sur les valeurs
+    restantes ; sinon une paire aberrante (**) est écartée. Le test double d'un côté n'est pas évalué
+    si le test simple y a déjà conclu à une valeur aberrante.
+    """
+    remaining = list(values)
+    iterations, removed_all = [], []
+    for it in range(1, max_iter + 1):
+        p = len(remaining)
+        if p < 3:
+            break
+        x = sorted(remaining)
+        mean_val = sum(x) / p
+        sd_val = std_dev(x)
+        if sd_val == 0:
+            break
+        c1, c5, dc1, dc5 = GRUBBS_FULL_TABLE.get(p, GRUBBS_FULL_TABLE[100])
+        s0 = _sum_sq(x)
+        g_p = (x[-1] - mean_val) / sd_val
+        g_1 = (mean_val - x[0]) / sd_val
+        st_top, st_bot = _single_status(g_p, c5, c1), _single_status(g_1, c5, c1)
+
+        double = None
+        if p >= 4 and dc5 is not None and s0 > 0:
+            s_top, s_bot = _sum_sq(x[:-2]), _sum_sq(x[2:])
+            gd_top, gd_bot = s_top / s0, s_bot / s0
+            double = {
+                "s0_sq": round(s0, 4), "s_top_sq": round(s_top, 4), "s_bot_sq": round(s_bot, 4),
+                "G_top": round(gd_top, 4), "G_bot": round(gd_bot, 4),
+                "crit_1": dc1, "crit_5": dc5,
+                "status_top": _double_status(gd_top, dc5, dc1) if st_top != "outlier" else "not_evaluated",
+                "status_bot": _double_status(gd_bot, dc5, dc1) if st_bot != "outlier" else "not_evaluated",
+            }
+
+        removed = []
+        if st_top == "outlier" or st_bot == "outlier":
+            if st_top == "outlier" and (st_bot != "outlier" or g_p >= g_1):
+                removed = [x[-1]]
+            else:
+                removed = [x[0]]
+        elif double:
+            cands = []
+            if double["status_top"] == "outlier":
+                cands.append((double["G_top"], x[-2:]))
+            if double["status_bot"] == "outlier":
+                cands.append((double["G_bot"], x[:2]))
+            if cands:
+                removed = list(min(cands, key=lambda c: c[0])[1])
+
+        iterations.append({
+            "iteration": it, "p": p, "mean": round(mean_val, 4), "sd": round(sd_val, 4),
+            "x_min": x[0], "x_max": x[-1],
+            "G_p": round(g_p, 4), "G_1": round(g_1, 4), "crit_1": c1, "crit_5": c5,
+            "status_top": st_top, "status_bot": st_bot,
+            "double": double, "removed": removed,
+        })
+        if not removed:
+            break
+        for v in removed:
+            remaining.remove(v)
+        removed_all.extend(removed)
+
+    return {"iterations": iterations, "n_initial": len(values), "n_final": len(remaining),
+            "removed": removed_all, "retained": sorted(remaining)}
+
+
 def droite_henry(values):
     """
     Droite d'Henry conforme à la Procédure TTS §A1.1.
@@ -830,14 +931,29 @@ def boxplot_stats(values):
     }
 
 
+def lilliefors_critical_05(p):
+    """Valeur critique de Lilliefors à 5 % pour p résultats (paramètres estimés)."""
+    if p in LILLIEFORS_CRITICAL_05:
+        return LILLIEFORS_CRITICAL_05[p]
+    if p > 30:
+        return 0.886 / math.sqrt(p)
+    keys = sorted(LILLIEFORS_CRITICAL_05)
+    lo = max(k for k in keys if k < p)
+    hi = min(k for k in keys if k > p)
+    frac = (p - lo) / float(hi - lo)
+    return LILLIEFORS_CRITICAL_05[lo] + frac * (LILLIEFORS_CRITICAL_05[hi] - LILLIEFORS_CRITICAL_05[lo])
+
+
 def kolmogorov_smirnov_test(values):
     """
-    Test de Kolmogorov-Smirnov conforme à la Procédure TTS §A1.6.
-    Compare la distribution observée à la distribution théorique normale.
-    Hypothèse H0 acceptée si D_max <= D_KS.
+    Test de normalité de Kolmogorov-Smirnov avec la correction de Lilliefors (Procédure TTS §A1.6).
+    La moyenne et l'écart-type sont estimés sur les données : les valeurs critiques du KS classique
+    (paramètres connus) ne s'appliquent pas, on utilise celles de Lilliefors.
+        D = max_i( i/p - F(z_i) ; F(z_i) - (i-1)/p ),  z_i = (x_(i) - moyenne) / s
+    H0 (normalité) acceptée si D <= D_crit(5 %). Non défini pour p < 4.
     """
     p = len(values)
-    if p < 3:
+    if p < 4:
         return {"d_max": None, "d_critical": None, "is_normal": False}
 
     sorted_vals = sorted(values)
@@ -845,21 +961,14 @@ def kolmogorov_smirnov_test(values):
     sd_val = std_dev(values)
 
     if sd_val == 0:
-        return {"d_max": 0.0, "d_critical": 1.0, "is_normal": True}
+        return {"d_max": 0.0, "d_critical": round(lilliefors_critical_05(p), 4), "is_normal": True}
 
     d_max = 0.0
     for i, x in enumerate(sorted_vals, 1):
-        f_obs = i / float(p)
         f_theo = normal_cdf((x - mean_val) / sd_val)
-        d = abs(f_obs - f_theo)
-        if d > d_max:
-            d_max = d
+        d_max = max(d_max, i / float(p) - f_theo, f_theo - (i - 1) / float(p))
 
-    if p <= 50:
-        d_crit = KS_CRITICAL_05.get(p, 1.36 / math.sqrt(p))
-    else:
-        d_crit = 1.36 / math.sqrt(p)
-
+    d_crit = lilliefors_critical_05(p)
     return {
         "d_max": round(d_max, 4),
         "d_critical": round(d_crit, 4),
@@ -1024,42 +1133,38 @@ def compute_stability(first_value, last_value, sigma_pt):
 # NOUVELLES FONCTIONS STATISTIQUES AVANCÉES
 # ===========================================================================
 
-def compute_cohen_kappa(results_list):
+def compute_fleiss_kappa(items):
     """
-    Coefficient Kappa de Cohen pour essais qualitatifs (ISO 13528 §9.5 / ISO 17043).
-    Mesure l'accord inter-laboratoires au-delà du hasard.
-    kappa = (P_o - P_e) / (1 - P_e)
-    Interprétation :
-        kappa >= 0.81 → Accord quasi-parfait
-        0.61-0.80    → Accord fort
-        0.41-0.60    → Accord modéré
-        0.21-0.40    → Accord faible
-        <= 0.20      → Accord très faible / aléatoire
+    Kappa de Fleiss : accord entre laboratoires corrigé du hasard, calculé sur PLUSIEURS essais qualitatifs.
+    items : liste d'essais ; chaque essai est la liste des réponses des laboratoires.
+    Les essais ayant le nombre modal n de répondants sont retenus (Fleiss suppose n constant), au moins 2.
+        P_i = (sum_k n_ik^2 - n) / (n (n - 1))      accord observé de l'essai i
+        P_e = sum_k p_k^2                            accord attendu par hasard (p_k = part de la catégorie k)
+        kappa = (mean(P_i) - P_e) / (1 - P_e)
+    Avec un seul essai le kappa n'est pas défini (il serait mécaniquement <= 0) : il n'est pas calculé.
+    Interprétation de Landis et Koch : >= 0,81 quasi-parfait ; >= 0,61 fort ; >= 0,41 modéré ;
+    >= 0,21 faible ; au-dessous très faible ; < 0 inférieur au hasard.
     """
-    cleaned = [r.strip().lower() for r in results_list if r]
-    n = len(cleaned)
-    if n < 2:
-        return {
-            "kappa": None, "interpretation": "Données insuffisantes",
-            "badge": "secondary", "p_observed": None, "p_expected": None,
-        }
+    not_computable = {
+        "kappa": None, "interpretation": "Non calculable (au moins 2 essais qualitatifs comparables requis)",
+        "badge": "secondary", "p_observed": None, "p_expected": None, "n": None, "items": 0,
+    }
+    cleaned = [[str(r).strip().lower() for r in it if r] for it in items]
+    cleaned = [c for c in cleaned if len(c) >= 2]
+    if len(cleaned) < 2:
+        return not_computable
+    n = Counter(len(c) for c in cleaned).most_common(1)[0][0]
+    kept = [c for c in cleaned if len(c) == n]
+    if len(kept) < 2:
+        return not_computable
 
-    counts = Counter(cleaned)
-    categories = list(counts.keys())
-    total = n
-
-    # P_o : proportion observée de l'accord (tous d'accord avec le consensus)
-    consensus = counts.most_common(1)[0][0]
-    p_observed = counts[consensus] / total
-
-    # P_e : proportion d'accord attendue par hasard
-    p_expected = sum((count / total) ** 2 for count in counts.values())
-
-    if p_expected >= 1.0:
-        kappa = 1.0
-    else:
-        kappa = (p_observed - p_expected) / (1.0 - p_expected)
-
+    N = len(kept)
+    categories = sorted({r for c in kept for r in c})
+    p_k = [sum(c.count(k) for c in kept) / float(N * n) for k in categories]
+    p_i = [(sum(c.count(k) ** 2 for k in categories) - n) / float(n * (n - 1)) for c in kept]
+    p_obs = sum(p_i) / N
+    p_exp = sum(p * p for p in p_k)
+    kappa = 1.0 if p_exp >= 1.0 else (p_obs - p_exp) / (1.0 - p_exp)
     kappa = round(kappa, 4)
 
     if kappa >= 0.81:
@@ -1070,18 +1175,16 @@ def compute_cohen_kappa(results_list):
         interp, badge = "Accord modéré", "info"
     elif kappa >= 0.21:
         interp, badge = "Accord faible", "warning"
+    elif kappa >= 0.0:
+        interp, badge = "Accord très faible", "danger"
     else:
-        interp, badge = "Accord très faible / aléatoire", "danger"
+        interp, badge = "Accord inférieur au hasard", "danger"
 
     return {
-        "kappa": kappa,
-        "interpretation": interp,
-        "badge": badge,
-        "p_observed": round(p_observed, 4),
-        "p_expected": round(p_expected, 4),
-        "n": n,
-        "categories": {k: v for k, v in counts.items()},
-        "consensus": consensus,
+        "kappa": kappa, "interpretation": interp, "badge": badge,
+        "p_observed": round(p_obs, 4), "p_expected": round(p_exp, 4),
+        "n": n, "items": N,
+        "categories": {k: sum(c.count(k) for c in kept) for k in categories},
     }
 
 
@@ -1260,6 +1363,14 @@ def solidite_matrix_stats(submissions, solidite_params=None):
     }
 
 
+def mandel_h_critical(p, alpha):
+    """Valeur critique de h de Mandel (ISO 5725-2) pour p laboratoires au niveau alpha (0,05 ou 0,01)."""
+    if p < 3:
+        return None
+    t = student_t_two_sided_quantile(alpha, p - 2)
+    return round((p - 1) * t / math.sqrt(p * (t * t + p - 2)), 3)
+
+
 def mandel_h_statistic(submissions, target_val, target_sd):
     """
     Statistique h de Mandel (ISO 5725-2 / ISO 13528) pour évaluation de la fidélité
@@ -1282,10 +1393,11 @@ def mandel_h_statistic(submissions, target_val, target_sd):
     ss = sum((v - mean_all) ** 2 for v in values)
     denom = math.sqrt(ss / (p - 1)) if ss > 0 else 1e-9
 
-    # Valeur critique de h (approximation standard, p. ex. table ISO 5725-2)
-    # h_crit(5%, p) ≈ (p-1)/sqrt(p) * t(5%/p, p-2) — approximation simplifiée
-    # On utilise la formule h_crit ≈ 1 + 3.5/sqrt(p) (approximation pratique)
-    h_critical = round(1.0 + 3.5 / math.sqrt(p), 3)
+    # Valeurs critiques exactes de l'ISO 5725-2 (indicateurs 5 % et 1 %) :
+    #   h_crit = (p - 1) * t / sqrt(p * (t^2 + p - 2)),  t = quantile de Student a p-2 ddl,
+    #   t tel que P(|T| > t) = 0,05 (indicateur) ou 0,01 (aberrant).
+    h_critical = mandel_h_critical(p, 0.05)
+    h_critical_1 = mandel_h_critical(p, 0.01)
 
     results = []
     for lab_code, val in zip(lab_codes, values):
@@ -1296,6 +1408,7 @@ def mandel_h_statistic(submissions, target_val, target_sd):
             "value": val,
             "h": round(h, 3),
             "significant": significant,
+            "highly_significant": abs(h) > h_critical_1,
         })
 
     # Trier par |h| décroissant
@@ -1304,6 +1417,7 @@ def mandel_h_statistic(submissions, target_val, target_sd):
     return {
         "results": results,
         "h_critical": h_critical,
+        "h_critical_1": h_critical_1,
         "n": p,
         "mean": round(mean_all, 5),
     }

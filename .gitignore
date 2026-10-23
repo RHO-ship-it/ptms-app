@@ -1,5 +1,12 @@
-   .venv/
-   venv/
-   __pycache__/
-   *.pyc
-   .env
+# Environnements et caches Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Secrets et données locales : ne jamais versionner
+.env
+.secret_key
+*.db
+instance/
+uploads/
