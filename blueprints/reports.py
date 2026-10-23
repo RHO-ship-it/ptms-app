@@ -1506,6 +1506,47 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
                 cells[3].text = interp + (" (exclu du calcul de x_pt/σ_pt)" if s.excluded_from_stats else "")
                 cells[4].text = "Oui" if s.validated else "Non"
 
+            # Interprétation analytique et métrologique de l'essai
+            doc.add_paragraph("Interprétation des résultats et analyse technique :", style="Intense Quote")
+            
+            p_interp = doc.add_paragraph()
+            interp_texts = []
+            
+            # Normalité et distribution
+            is_norm = ks_res.get("is_normal", False)
+            r2_val = henry_res.get("r_squared")
+            if is_norm and (r2_val is None or r2_val >= 0.70):
+                interp_texts.append("• Distribution & Normalité : La distribution des résultats soumis suit une loi normale sans biais de distribution majeur (validé par Lilliefors et Droite d'Henry), ce qui justifie pleinement l'application des statistiques consensuelles de l'ISO 13528.")
+            else:
+                interp_texts.append("• Distribution & Normalité : Les résultats présentent des écarts par rapport à la normalité théorique ; l'utilisation des estimateurs robustes (médiane, Algorithme A) a permis de minimiser l'influence des valeurs extrêmes.")
+
+            # Incertitude sur la valeur assignée
+            u_ratio = av.get("u_xpt") / av.get("sigma_pt") if (av.get("u_xpt") and av.get("sigma_pt") and av.get("sigma_pt") > 0) else None
+            if u_ratio is not None:
+                if u_ratio <= 0.3:
+                    interp_texts.append(f"• Incertitude de la valeur de référence : Le ratio u(x_pt) / σ_pt est de {u_ratio:.3f} (≤ 0.3). Conformément à l'ISO 13528 §9.2, l'incertitude de la valeur assignée est négligeable et le score z standard est pleinement représentatif.")
+                else:
+                    interp_texts.append(f"• Incertitude de la valeur de référence : Le ratio u(x_pt) / σ_pt est de {u_ratio:.3f} (> 0.3). Conformément à l'ISO 13528 §9.2, l'incertitude est prise en compte via le score élargi z'.")
+
+            # Valeurs aberrantes (Grubbs / Boxplot)
+            g_outliers = g_res.get("has_outliers") or (g_res.get("status") in ("outlier", "straggler"))
+            b_outliers = box_res.get("outliers") if box_res else []
+            if g_outliers or b_outliers:
+                nb_out = len(b_outliers) if b_outliers else 1
+                interp_texts.append(f"• Détection des anomalies : {nb_out} valeur(s) extrême(s) ou aberrante(s) ont été identifiées. Les laboratoires concernés sont invités à vérifier leurs étalonnages et conditions opératoires.")
+            else:
+                interp_texts.append("• Détection des anomalies : Aucun résultat aberrant critique n'a été détecté par les tests de Grubbs et de Tukey.")
+
+            # Cohérence Mandel h
+            if mandel_res.get("has_outliers"):
+                interp_texts.append("• Fidélité inter-laboratoires (Mandel h) : Des biais systématiques significatifs ont été détectés (|h| > seuil d'action 1 %).")
+            elif mandel_res.get("has_stragglers"):
+                interp_texts.append("• Fidélité inter-laboratoires (Mandel h) : Une légère dispersion inter-laboratoires est constatée (|h| > seuil de vigilance 5 %).")
+            else:
+                interp_texts.append("• Fidélité inter-laboratoires (Mandel h) : La cohérence entre les différents laboratoires est satisfaisante sans signe de dérive systématique.")
+
+            p_interp.text = "\n".join(interp_texts)
+
         else:
             results = [s.qualitative_result for s in submissions if s.qualitative_result]
             if results:
@@ -1556,21 +1597,47 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
                 cells[2].text = conform_label
                 cells[3].text = "Oui" if s.validated else "Non"
 
+            doc.add_paragraph("Interprétation du consensus qualitatif :", style="Intense Quote")
+            p_q_interp = doc.add_paragraph()
+            q_texts = []
+            q_texts.append(f"• Accord collectif : Le résultat consensuel modal est « {consensus or 'Non défini'} » avec un taux d'accord global de {agreement_rate} %.")
+            if kappa_res and kappa_res.get("kappa") is not None:
+                q_texts.append(f"• Fiabilité de la concordance : L'indice Kappa de Cohen/Fleiss est de {kappa_res.get('kappa')} ({kappa_res.get('interpretation')}), confirmant la robustesse du consensus au-delà du simple hasard.")
+            p_q_interp.text = "\n".join(q_texts)
+
         if not submissions:
             doc.add_paragraph("Aucune soumission reçue pour cet essai.", style="Intense Quote")
 
-    # ----- 7. Performance evaluation summary -----
-    doc.add_heading("7) Performance Evaluation Summary", level=1)
-    summary_table = doc.add_table(rows=1, cols=2)
+    # ----- 7. Performance evaluation summary & Interpretation -----
+    doc.add_heading("7) Performance Evaluation Summary & Interpretation", level=1)
+    summary_table = doc.add_table(rows=1, cols=3)
     summary_table.style = "Light Grid Accent 1"
     hdr = summary_table.rows[0].cells
-    hdr[0].text, hdr[1].text = "Résultat", "Nombre"
+    hdr[0].text, hdr[1].text, hdr[2].text = "Résultat", "Nombre", "Pourcentage"
+    
+    total_evals = total_satisfactory + total_questionable + total_unsatisfactory
     for label, val in [("Satisfaisant", total_satisfactory),
                        ("Douteux", total_questionable),
                        ("Non satisfaisant", total_unsatisfactory)]:
         cells = summary_table.add_row().cells
         cells[0].text = label
         cells[1].text = str(val)
+        pct = round((val / total_evals * 100), 1) if total_evals > 0 else 0.0
+        cells[2].text = f"{pct} %"
+
+    doc.add_paragraph()
+    doc.add_paragraph("Synthèse analytique globale de la campagne :", style="Intense Quote")
+    p_glob = doc.add_paragraph()
+    glob_lines = []
+    if total_evals > 0:
+        pct_sat = round((total_satisfactory / total_evals * 100), 1)
+        glob_lines.append(f"• Taux de conformité global : {pct_sat} % des résultats soumis sont conformes aux critères de performance (satisfaisants).")
+        if total_unsatisfactory == 0 and total_questionable == 0:
+            glob_lines.append("• Niveau de maîtrise : Excellent niveau global d'exactitude et de précision analytique de l'ensemble des participants.")
+        elif total_unsatisfactory > 0:
+            glob_lines.append(f"• Points de vigilance : {total_unsatisfactory} résultat(s) non satisfaisant(s) nécessitent l'ouverture d'actions correctives immédiates par les laboratoires concernés (ISO/CEI 17025 §7.7).")
+    glob_lines.append("• Confidentialité et traçabilité : Chaque laboratoire est invité à confronter son code individuel aux graphiques et tableaux pour mener son évaluation interne de compétence.")
+    p_glob.text = "\n".join(glob_lines)
 
     # ----- 8. Recommendations -----
     doc.add_heading("8) Recommendations", level=1)
