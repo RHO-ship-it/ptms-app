@@ -8,4 +8,5 @@ python-docx==1.1.2
 waitress==3.0.0
 pyngrok==7.1.6
 gunicorn==22.0.0
-
+matplotlib>=3.8.0
+numpy>=1.26.0

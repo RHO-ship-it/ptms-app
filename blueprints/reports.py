@@ -1142,6 +1142,24 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
             return s if s not in ("-0", "-0.0") else "0"
         return str(value)
 
+    def _add_chart_to_doc(buf, caption):
+        if buf is None:
+            return
+        p_img = doc.add_paragraph()
+        p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_img.paragraph_format.space_before = Pt(8)
+        p_img.paragraph_format.space_after = Pt(2)
+        run = p_img.add_run()
+        run.add_picture(buf, width=Cm(14.5))
+        p_cap = doc.add_paragraph(caption)
+        p_cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_cap.paragraph_format.space_before = Pt(2)
+        p_cap.paragraph_format.space_after = Pt(12)
+        if p_cap.runs:
+            p_cap.runs[0].font.italic = True
+            p_cap.runs[0].font.size = Pt(9)
+            p_cap.runs[0].font.color.rgb = RGBColor(90, 90, 90)
+
     # Style de base
     normal = doc.styles["Normal"]
     normal.font.name = "Calibri"
@@ -1236,6 +1254,12 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
 
     total_satisfactory = total_questionable = total_unsatisfactory = 0
 
+    # Estimateurs et graphiques actifs par défaut si non spécifiés
+    active_estimators = selected_estimators if selected_estimators else [
+        "x_pt", "sigma_pt", "u_xpt", "U_xpt", "mean_arith", "sd_arith", "median", "grubbs", "normality",
+        "chart_henry", "chart_kde", "chart_boxplot", "chart_zscore", "chart_mandel_h", "chart_qualitative"
+    ]
+
     for trial in campaign.trials:
         doc.add_heading(f"6.{campaign.trials.index(trial) + 1}) {trial.name} ({trial.type_label()})", level=2)
         doc.add_paragraph(f"Paramètre : {trial.parameter or '-'} | Unité : {trial.unit or '-'} | "
@@ -1248,11 +1272,6 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
             if values:
                 av = assigned_values(trial, submissions)
                 n_excl = sum(1 for s in submissions if s.excluded_from_stats)
-                
-                # Estimateurs par défaut si non spécifié
-                active_estimators = selected_estimators if selected_estimators else [
-                    "x_pt", "sigma_pt", "u_xpt", "U_xpt", "mean_arith", "sd_arith", "median", "grubbs", "normality"
-                ]
 
                 # Calcul des statistiques avancées
                 alg_a_mean, alg_a_sd = robust_stats(values)
@@ -1423,6 +1442,48 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
             else:
                 doc.add_paragraph("Aucune valeur soumise : aucun calcul de statistique / z-score n'est disponible pour cet essai.")
 
+            # Insertion des courbes et graphiques sélectionnés
+            has_explicit_chart_selection = any(e.startswith("chart_") for e in active_estimators)
+            if has_explicit_chart_selection:
+                show_henry = "chart_henry" in active_estimators
+                show_kde = "chart_kde" in active_estimators
+                show_boxplot = "chart_boxplot" in active_estimators
+                show_zscore = "chart_zscore" in active_estimators
+                show_mandel = "chart_mandel_h" in active_estimators
+            else:
+                show_henry = "droite_henry" in active_estimators
+                show_kde = False
+                show_boxplot = "boxplot" in active_estimators
+                show_zscore = "z_score" in active_estimators
+                show_mandel = "mandel_h" in active_estimators
+
+            charts_to_render = []
+            if show_kde:
+                buf_kde = _generate_kde_chart(values, x_pt=av.get("x_pt"), sigma_pt=av.get("sigma_pt"), trial_name=trial.name, unit=trial.unit)
+                if buf_kde:
+                    charts_to_render.append((buf_kde, f"Figure : Courbe de densité et distribution des résultats — {trial.name}"))
+            if show_henry:
+                buf_henry = _generate_henry_chart(henry_res, trial_name=trial.name)
+                if buf_henry:
+                    charts_to_render.append((buf_henry, f"Figure : Droite d'Henry (Normalité TTS §A1.1) — {trial.name}"))
+            if show_boxplot:
+                buf_box = _generate_boxplot_chart(values, box_res=box_res, trial_name=trial.name, unit=trial.unit)
+                if buf_box:
+                    charts_to_render.append((buf_box, f"Figure : Boîte à moustaches (Box-Plot de Tukey) — {trial.name}"))
+            if show_zscore:
+                buf_z = _generate_zscore_chart(submissions, trial_name=trial.name, lab_label_fn=_lab_label)
+                if buf_z:
+                    charts_to_render.append((buf_z, f"Figure : Diagramme des scores z individuels (ISO 13528 §9.2) — {trial.name}"))
+            if show_mandel:
+                buf_mandel = _generate_mandel_chart(mandel_res, trial_name=trial.name, lab_label_fn=_lab_label, forms=trial.forms)
+                if buf_mandel:
+                    charts_to_render.append((buf_mandel, f"Figure : Statistique h de Mandel par laboratoire (ISO 5725-2) — {trial.name}"))
+
+            if charts_to_render:
+                doc.add_paragraph("Courbes et graphiques d'évaluation :", style="Intense Quote")
+                for c_buf, c_cap in charts_to_render:
+                    _add_chart_to_doc(c_buf, c_cap)
+
             res_table = doc.add_table(rows=1, cols=5)
             res_table.style = "Light Grid Accent 1"
             hdr = res_table.rows[0].cells
@@ -1457,6 +1518,14 @@ def _export_full_report_word(campaign, anonymous=False, own_lab=None, selected_e
                     f"Résultat consensuel : {consensus or '-'}   |   "
                     f"Taux d'accord : {agreement_rate}%" + k_str
                 )
+
+                has_explicit_chart_selection = any(e.startswith("chart_") for e in active_estimators)
+                show_qualitative = ("chart_qualitative" in active_estimators) if has_explicit_chart_selection else ("consensus" in active_estimators)
+                if show_qualitative:
+                    buf_qual = _generate_qualitative_chart(results, consensus=consensus, agreement_rate=agreement_rate, trial_name=trial.name)
+                    if buf_qual:
+                        doc.add_paragraph("Représentation graphique de la distribution :", style="Intense Quote")
+                        _add_chart_to_doc(buf_qual, f"Figure : Répartition des résultats qualitatifs — {trial.name}")
             else:
                 consensus, agreement_rate = None, 0.0
                 doc.add_paragraph("Aucune donnée qualitative soumise pour cet essai.")

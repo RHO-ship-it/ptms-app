@@ -464,6 +464,51 @@
                 </div>
               </div>
             </div>
+
+            <!-- 10. Courbes & Graphiques (Visualisations) -->
+            <div class="col-md-12">
+              <div class="card border-0 shadow-sm p-3" style="background:#fef2f2;">
+                <h6 class="fw-bold mb-2 text-danger"><i class="bi bi-graph-up-arrow me-1"></i> 10. Courbes & Graphiques d'Analyse (Visualisations ISO 13528 / ISO 5725-2)</h6>
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="chart_henry" id="m_chenry_{{ c.id }}" checked>
+                      <label class="form-check-label fw-semibold" for="m_chenry_{{ c.id }}">Courbe de la Droite d'Henry (Normalité)</label>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="chart_kde" id="m_ckde_{{ c.id }}" checked>
+                      <label class="form-check-label fw-semibold" for="m_ckde_{{ c.id }}">Courbe de densité & Distribution (KDE / Gauss)</label>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="chart_boxplot" id="m_cbox_{{ c.id }}" checked>
+                      <label class="form-check-label fw-semibold" for="m_cbox_{{ c.id }}">Boîte à moustaches (Box-Plot de Tukey)</label>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="chart_zscore" id="m_czscore_{{ c.id }}" checked>
+                      <label class="form-check-label fw-semibold" for="m_czscore_{{ c.id }}">Graphique des Scores Z par laboratoire</label>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="chart_mandel_h" id="m_cmandel_{{ c.id }}" checked>
+                      <label class="form-check-label fw-semibold" for="m_cmandel_{{ c.id }}">Graphique de la Statistique h de Mandel</label>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input mcheck-{{ c.id }}" type="checkbox" name="estimators" value="chart_qualitative" id="m_cqual_{{ c.id }}" checked>
+                      <label class="form-check-label fw-semibold" for="m_cqual_{{ c.id }}">Répartition des résultats qualitatifs</label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div class="modal-footer bg-white border-top">
@@ -500,7 +545,8 @@
         'horwitz', 'horwitz_rsd', 'horrat', 'grubbs', 'grubbs_double', 'boxplot',
         'normality', 'droite_henry', 'kurt_skew', 'mandel_h',
         'z_score', 'z_prime', 'en_score',
-        'consensus', 'kappa'
+        'consensus', 'kappa',
+        'chart_henry', 'chart_kde', 'chart_boxplot', 'chart_zscore', 'chart_mandel_h', 'chart_qualitative'
       ];
       checks.forEach(c => {
         c.checked = isoSet.includes(c.value);

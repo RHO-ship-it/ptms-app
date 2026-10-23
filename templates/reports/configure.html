@@ -329,6 +329,47 @@
           </div>
         </div>
       </div>
+
+      <!-- 10. Courbes & Graphiques d'Analyse -->
+      <div class="col-12 col-lg-6">
+        <div class="card shadow-sm border-0 h-100">
+          <div class="card-header bg-danger bg-opacity-10 border-0 py-3" style="background:#fee2e2;">
+            <h6 class="mb-0 fw-bold text-danger"><i class="bi bi-graph-up-arrow me-2"></i>10. Courbes & Graphiques (Visualisations ISO 13528 / ISO 5725-2)</h6>
+          </div>
+          <div class="card-body">
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="chart_henry" id="est_chart_henry" checked>
+              <label class="form-check-label fw-bold" for="est_chart_henry">Courbe de la Droite d'Henry (Probabilité normale & régression)</label>
+              <div class="text-muted small">Normits en fonction des valeurs mesurées, droite d'ajustement et R² (TTS §A1.1).</div>
+            </div>
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="chart_kde" id="est_chart_kde" checked>
+              <label class="form-check-label fw-bold" for="est_chart_kde">Courbe de densité de probabilité & distribution (KDE / Gauss)</label>
+              <div class="text-muted small">Distribution des participants, courbe gaussienne et limites x_pt ± 2σ_pt, ± 3σ_pt.</div>
+            </div>
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="chart_boxplot" id="est_chart_boxplot" checked>
+              <label class="form-check-label fw-bold" for="est_chart_boxplot">Boîte à moustaches (Box-Plot de Tukey)</label>
+              <div class="text-muted small">Représentation visuelle de Q1, Médiane, Q3, moustaches et repérage des valeurs aberrantes.</div>
+            </div>
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="chart_zscore" id="est_chart_zscore" checked>
+              <label class="form-check-label fw-bold" for="est_chart_zscore">Graphique des Scores Z par laboratoire</label>
+              <div class="text-muted small">Diagramme en bâtons des scores z par laboratoire avec zones d'avertissement et d'action.</div>
+            </div>
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="chart_mandel_h" id="est_chart_mandel_h" checked>
+              <label class="form-check-label fw-bold" for="est_chart_mandel_h">Graphique de la Statistique h de Mandel</label>
+              <div class="text-muted small">Diagramme des valeurs h par laboratoire avec seuils critiques 5 % (vigilance) et 1 % (action).</div>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input est-check" type="checkbox" name="estimators" value="chart_qualitative" id="est_chart_qualitative" checked>
+              <label class="form-check-label fw-bold" for="est_chart_qualitative">Distribution des résultats qualitatifs</label>
+              <div class="text-muted small">Diagramme de répartition des réponses qualitatives et mise en évidence du consensus.</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Barre d'actions finale fixe / flottante -->
@@ -367,7 +408,8 @@
         'horwitz', 'horwitz_rsd', 'horrat', 'grubbs', 'grubbs_double', 'boxplot',
         'normality', 'droite_henry', 'kurt_skew', 'mandel_h',
         'z_score', 'z_prime', 'en_score',
-        'consensus', 'kappa'
+        'consensus', 'kappa',
+        'chart_henry', 'chart_kde', 'chart_boxplot', 'chart_zscore', 'chart_mandel_h', 'chart_qualitative'
       ];
       checks.forEach(c => {
         c.checked = isoSet.includes(c.value);
