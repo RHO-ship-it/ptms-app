@@ -94,7 +94,7 @@
         <input type="hidden" name="action" value="save_rows"><input type="hidden" name="key" value="{{ sh.key }}">
         <input type="hidden" name="nrows" value="{{ s.trials|length + 3 }}">
         <div class="table-responsive"><table class="table table-sm align-middle">
-          <thead><tr><th style="width:40px;">N°</th><th>Essai (nom)</th><th>Paramètre affiché</th><th style="width:110px;">Unit</th><th>Standard / Method</th><th style="width:130px;">Sample Code</th><th>Choix propres à la ligne</th><th class="text-center">Supprimer</th></tr></thead>
+          <thead><tr><th style="width:40px;">N°</th><th>Essai (nom)</th><th>Paramètre affiché</th><th style="width:100px;">Unit</th><th style="width:120px;">Standard / Method</th><th style="width:110px;">Sample Code</th><th style="width:85px;" title="Nombre de décimales (digits) imposé par l'admin">Digits (déc.)</th><th>Choix propres à la ligne</th><th class="text-center">Supprimer</th></tr></thead>
           <tbody>
           {% for i in range(s.trials|length + 3) %}
             {% set t = s.trials[i] if i < s.trials|length else none %}
@@ -105,6 +105,7 @@
               <td><input class="form-control form-control-sm" name="r{{ i }}_unit" value="{{ t.unit if t and t.unit else '' }}"></td>
               <td><input class="form-control form-control-sm" name="r{{ i }}_method" value="{{ t.method if t and t.method else '' }}"></td>
               <td><input class="form-control form-control-sm" name="r{{ i }}_sample" value="{{ t.sample_reference if t and t.sample_reference else '' }}"></td>
+              <td><input class="form-control form-control-sm text-center" type="number" min="0" max="6" name="r{{ i }}_decimals" value="{{ t.decimals if t and t.decimals is not none else '' }}" placeholder="ex: 1"></td>
               <td><input class="form-control form-control-sm" name="r{{ i }}_scale" value="{{ t.scale if t and t.scale else '' }}" placeholder="(liste de l'onglet)"></td>
               <td class="text-center">{% if t %}<input class="form-check-input" type="checkbox" name="r{{ i }}_del" value="1">{% endif %}</td>
             </tr>

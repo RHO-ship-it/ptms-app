@@ -9,6 +9,9 @@
 .xl-table td.lbl { padding:6px 10px; min-width:260px; font-weight:500; }
 .xl-table td.num { padding:6px 10px; text-align:center; width:44px; color:#666; }
 .xl-table td.auto { background:#E7E6E6; padding:6px 10px; text-align:center; font-weight:600; min-width:80px; }
+.xl-in.xl-mean { background:#E7E6E6; }
+.xl-in.xl-mean:focus { background:#FFF2CC; box-shadow:inset 0 0 0 2px #BF9000; }
+.xl-in.xl-mean.user-modified { background:#FFF2CC; }
 .xl-table td.fixed { background:#F2F2F2; padding:6px 10px; min-width:90px; font-size:12.5px; }
 .xl-in { width:100%; min-width:76px; border:0; background:#FFF2CC; padding:6px 8px; text-align:center; outline:none; font-size:13px; }
 .xl-in:focus { background:#FFE699; box-shadow:inset 0 0 0 2px #BF9000; }
@@ -155,7 +158,7 @@
       <textarea class="form-control" rows="3" name="sp_{{ k }}_comments" {{ 'disabled' if preview }}>{{ sv.get('comments', '') }}</textarea>
       <div class="xl-legend small mt-3"><b>Legend:</b>
         <span class="ms-3"><span class="sw" style="background:#FFF2CC"></span>Cell to complete</span>
-        <span class="ms-3"><span class="sw" style="background:#E7E6E6"></span>Auto-calculated cell – do not modify</span></div>
+        <span class="ms-3"><span class="sw" style="background:#E7E6E6"></span>Moyenne (calculée automatiquement ou modifiable manuellement)</span></div>
       <p class="small text-muted mt-2 mb-0">Enter each taster's intensity on the COI 0–10 scale (one decimal), one row per taster (min {{ sx.min }}, max {{ sx.max }}). Classification: EVOO = defect median 0 and fruity &gt; 0 · VOO = defect median &gt; 0 and ≤ 3.5 and fruity &gt; 0 · Lampante = defect median &gt; 3.5 or fruity = 0.</p>
       {% else %}
       <div class="table-responsive">
@@ -167,7 +170,11 @@
           <tr>
             <td class="num">{{ r.n }}</td><td class="lbl" title="{{ r.trial.name }}">{{ r.label }}</td>
             {% for c in s.cols %}
-              {% if c.type == 'mean' %}<td class="auto" data-mean></td>
+              {% if c.type == 'mean' %}
+                {% set nm = 'c_' ~ r.trial.id ~ '_' ~ c.key %}{% set val = r.cells.get(c.key, '') %}
+                <td class="mean-cell">
+                  <input class="xl-in xl-mean fw-bold text-dark" type="text" inputmode="decimal" name="{{ nm }}" value="{{ val }}" data-role="mean" data-num="1" data-decimals="{{ r.trial.decimals if r.trial.decimals is not none else '' }}" {{ 'disabled' if preview }} placeholder="Auto / Saisir">
+                </td>
               {% elif c.type == 'fixed' %}<td class="fixed">{{ r.fixed.get(c.fixed, '') }}</td>
               {% else %}
               {% set nm = 'c_' ~ r.trial.id ~ '_' ~ c.key %}{% set val = r.cells.get(c.key, '') %}
@@ -179,7 +186,7 @@
                 {% elif c.type == 'date' %}
                   <input class="xl-in" type="date" name="{{ nm }}" value="{{ val }}" data-role="{{ c.role }}" {{ 'disabled' if preview }}>
                 {% elif c.type == 'number' %}
-                  <input class="xl-in" type="text" inputmode="decimal" name="{{ nm }}" value="{{ val }}" data-role="{{ c.role }}" data-num="1" {{ 'disabled' if preview }}>
+                  <input class="xl-in" type="text" inputmode="decimal" name="{{ nm }}" value="{{ val }}" data-role="{{ c.role }}" data-num="1" data-decimals="{{ r.trial.decimals if r.trial.decimals is not none else '' }}" {{ 'disabled' if preview }}>
                 {% else %}
                   <input class="xl-in text" type="text" name="{{ nm }}" value="{{ val }}" data-role="{{ c.role }}" {{ 'disabled' if preview }}>
                 {% endif %}
@@ -240,8 +247,23 @@
           total++; if ((el.value || '').trim() !== '') count++;
         });
         tr.querySelectorAll('[data-role="result"][data-num]').forEach(function (el) { var n = num(el.value); if (n !== null) vals.push(n); });
-        var mean = tr.querySelector('[data-mean]');
-        if (mean) mean.textContent = vals.length ? (vals.reduce(function (a, b) { return a + b; }, 0) / vals.length).toFixed(3).replace(/\.?0+$/, '') : '';
+        var meanInput = tr.querySelector('input[data-role="mean"]');
+        if (meanInput) {
+          var decAttr = meanInput.dataset.decimals;
+          var decDigits = (decAttr !== undefined && decAttr !== '') ? parseInt(decAttr, 10) : null;
+          // Si l'utilisateur n'a pas tapé manuellement dans le champ moyenne, on pré-remplit automatiquement
+          if (!meanInput.dataset.userEdited && (!meanInput.value || meanInput.value.trim() === '' || meanInput.dataset.autoCalculated)) {
+            if (vals.length) {
+              var avg = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
+              var formattedAvg = (decDigits !== null) ? avg.toFixed(decDigits) : avg.toFixed(3).replace(/\.?0+$/, '');
+              meanInput.value = formattedAvg;
+              meanInput.dataset.autoCalculated = "1";
+            } else {
+              meanInput.value = '';
+              delete meanInput.dataset.autoCalculated;
+            }
+          }
+        }
       });
       all += count; allTotal += total;
       var set = function (sel, v) { var e = document.querySelector(sel); if (e) e.textContent = v; };
@@ -280,8 +302,26 @@
   }
   document.getElementById('sheetForm').addEventListener('change', refresh);
   document.getElementById('sheetForm').addEventListener('input', function (e) {
-    if (e.target.dataset && (e.target.dataset.num || e.target.dataset.attr) && e.target.tagName === 'INPUT') e.target.value = e.target.value.replace(/[^0-9.,\-]/g, '');
+    if (e.target.dataset && (e.target.dataset.num || e.target.dataset.attr) && e.target.tagName === 'INPUT') {
+      e.target.value = e.target.value.replace(/[^0-9.,\-]/g, '');
+      if (e.target.dataset.role === 'mean') {
+        e.target.dataset.userEdited = "1";
+        delete e.target.dataset.autoCalculated;
+        e.target.classList.add('user-modified');
+      }
+    }
     refresh();
+  });
+  // Formatage selon les digits fixés par l'admin à la perte de focus (blur)
+  document.getElementById('sheetForm').addEventListener('focusout', function (e) {
+    var el = e.target;
+    if (el && el.tagName === 'INPUT' && el.dataset && el.dataset.num && el.dataset.decimals !== undefined && el.dataset.decimals !== '') {
+      var n = num(el.value);
+      var dec = parseInt(el.dataset.decimals, 10);
+      if (n !== null && !isNaN(dec)) {
+        el.value = n.toFixed(dec);
+      }
+    }
   });
   refresh();
 })();

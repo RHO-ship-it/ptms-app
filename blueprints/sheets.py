@@ -385,12 +385,16 @@ def _builder_action(campaign, cfg, sheet, action):
                 trial.sample_reference = (f.get(f"r{i}_sample") or "").strip()
                 trial.scale = ", ".join(_split(f.get(f"r{i}_scale"))) or None
                 trial.sheet_key = sheet["key"]
+                dec_val = (f.get(f"r{i}_decimals") or "").strip()
+                trial.decimals = int(dec_val) if dec_val.isdigit() else None
             elif name:
+                dec_val = (f.get(f"r{i}_decimals") or "").strip()
                 trial = Trial(campaign_id=campaign.id, name=name, trial_type=sheet["kind"] if sheet["kind"] != "sensory" else "quantitative",
                               parameter=(f.get(f"r{i}_param") or "").strip() or None,
                               unit=(f.get(f"r{i}_unit") or "").strip(), method=(f.get(f"r{i}_method") or "").strip(),
                               sample_reference=(f.get(f"r{i}_sample") or "").strip(),
-                              scale=", ".join(_split(f.get(f"r{i}_scale"))) or None, sheet_key=sheet["key"])
+                              scale=", ".join(_split(f.get(f"r{i}_scale"))) or None, sheet_key=sheet["key"],
+                              decimals=int(dec_val) if dec_val.isdigit() else None)
                 db.session.add(trial)
                 db.session.flush()
                 for cl in campaign.laboratories:
@@ -440,6 +444,9 @@ def _legacy_cells(trial, sheet, sub):
         cells[first["key"]] = "" if shown is None else str(shown)
     if final and shown != "":
         cells[final["key"]] = str(shown)
+    mean_col = next((c for c in cols if c["type"] == "mean"), None)
+    if mean_col and shown != "":
+        cells[mean_col["key"]] = str(shown)
     for c in cols:
         if c["role"] == "uncertainty" and sub.uncertainty is not None:
             cells[c["key"]] = str(sub.uncertainty)
@@ -517,7 +524,7 @@ def _save_entry(campaign, cfg, lab, row, store, forms):
             continue
         for t in trials_of(cfg, campaign, s["key"]):
             vals = {c["key"]: (f.get(f"c_{t.id}_{c['key']}") or "").strip()
-                    for c in s["cols"] if c["type"] not in ("mean", "fixed")}
+                    for c in s["cols"] if c["type"] != "fixed"}
             store["cells"][str(t.id)] = vals
             form = forms.get(t.id)
             if form is None:
@@ -580,9 +587,12 @@ def _compute(trial, sheet, vals):
         try:
             nums = [_num(x) for x in results]
             final = _num(finals[0]) if finals else None
+            mean_col = next((c for c in cols if c["type"] == "mean"), None)
+            manual_mean = _num(vals.get(mean_col["key"])) if mean_col and vals.get(mean_col["key"]) else None
         except ValueError:
-            raise ValueError("les résultats doivent être des nombres")
-        value = final if final is not None else (sum(nums) / len(nums) if nums else None)
+            raise ValueError("les résultats et la moyenne doivent être des nombres")
+        # Priorité : moyenne saisie manuellement par le participant > final > moyenne calculée des réplicats
+        value = manual_mean if manual_mean is not None else (final if final is not None else (sum(nums) / len(nums) if nums else None))
         if value is None:
             return None
         out["value"] = round(value, 10)

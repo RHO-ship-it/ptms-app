@@ -170,6 +170,7 @@ class Trial(db.Model):
     due_date = db.Column(db.Date, nullable=True)
     sheet_key = db.Column(db.String(40), nullable=True)   # feuille de saisie (onglet) à laquelle appartient cette ligne
     scale = db.Column(db.Text, nullable=True)             # liste de choix propre à cette ligne (valeurs séparées par des virgules)
+    decimals = db.Column(db.Integer, nullable=True)       # nombre de décimales (digits) imposé par l'admin pour la saisie
 
     # --- Traçabilité de sigma_pt (ISO 13528 §6-7 / cahier des charges §8) ---
     sigma_pt_method = db.Column(db.String(20), nullable=False, default="fixe")
